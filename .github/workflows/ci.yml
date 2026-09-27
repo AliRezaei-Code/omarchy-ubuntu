@@ -1,0 +1,61 @@
+name: CI
+
+# The port targets Ubuntu 22.04 specifically, because that is the release the
+# package name map was verified against and the release the deb's dependencies
+# were resolved in. Running on `latest` would pass against a different archive
+# than the one the port is written for, which is the worst way for a package
+# test to be green.
+on:
+  push:
+    branches: [quattro, 'ubuntu/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on ubuntu-22.04
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The host tools test/shell.d/base-test.sh's require_command asks for.
+      # The suite skips the checks it cannot run rather than failing them, so
+      # this list is about coverage, not about making the run green.
+      # tzdata asks for a geographic area and then a city, and it does so even
+      # under `apt-get install -y`. An unattended job that does not say so
+      # hangs there forever with no error, which is the worst kind of CI
+      # failure to diagnose.
+      - name: Install the tools the suite requires
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -qq
+          echo 'Etc/UTC' | sudo tee /etc/timezone >/dev/null
+          sudo apt-get install -y --no-install-recommends \
+            jq python3 lua5.4 imagemagick ffmpeg util-linux \
+            desktop-file-utils fontconfig file
+
+      - name: Report which checks will be skipped
+        run: |
+          for tool in node hyprctl omasnap quickshell; do
+            command -v "$tool" >/dev/null || echo "not present, some checks will skip: $tool"
+          done
+
+      - name: Run the suite
+        run: ./test/all
+
+      # The deb is the deliverable, so the suite passing is not enough: the
+      # artefact has to build, and it has to be a package dpkg accepts.
+      - name: Build the deb
+        run: make deb
+
+      - name: Check the built package
+        run: |
+          deb=$(ls build/deb/*.deb)
+          dpkg-deb --info "$deb" | head -20
+          dpkg-deb --contents "$deb" | grep -q '^.*usr/bin/omarchy$'
+          dpkg-deb --contents "$deb" | grep -q 'usr/share/omarchy/bin/'
