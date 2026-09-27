@@ -10,60 +10,60 @@
 # because a list of things that are wrong is only evidence while it is true.
 #
 # This is the ubuntu-22.04 runner's baseline, taken from an actual run rather
-# than from a developer machine: they differ. The runner has `lua` installed
-# and a different umask, so eleven files that fail on a workstation pass there
-# and must not be listed.
+# than from a developer machine. They are not the same machine, and getting
+# that wrong is what the first CI run did: it listed eleven files that pass on
+# the runner, and the gate correctly reported the list as stale.
 #
 # Each entry says why, so a line here is never a mystery. A name is removed the
 # day its cause is fixed, and the build says so if that day has already passed.
 
-# --- this is upstream's own drift, and the port does not own it -----------
+# --- upstream's own drift, and the port does not own it -------------------
 # bin/omarchy-theme-set-vscode writes a real file on purpose, because the
 # _watch watcher needs a same-inode rewrite, and test/cli still asserts a
 # symlink.
 cli
 
-# --- the tool or the machine the runner has --------------------------------
-# magick, mise and the plocate/xkb tools are not installed on the runner, and
-# these assertions need them.
+# --- the tool the runner does not have -------------------------------------
+#   bar-text-color  magick
+#   mise-work-path  mise
+#   locate          plocate
+#   keybindings-menu  lua behaviour, reached through a helper that is not
+#                     installed here
 bar-text-color
 mise-work-path
-powerprofiles-set
-windows-key
-
-# The runner's umask is 002, so migration files are written 0644 and the tests
-# that require it pass. A workstation with umask 0002 fails these instead --
-# which is why they are named here in a comment rather than on the list, and
-# why the list has to come from a runner and not from a developer's machine.
-#   hermes-skin-migration, omasnap
-# system-sleep-ownership-migration fails here too, but for a different reason
-# -- it quarantines a path behind a root-only directory the runner's layout does
-# not reproduce -- so it is on the list below.
-# Same for nopasswd-sudo-expiry, which needs a privileged helper the runner
-# does not have.
-
-# The tree is not root-owned, so omarchy-plymouth-set refuses to publish.
-plymouth-set
-
-# Hardware the runner does not have.
-hw-hybrid-gpu
-windows-vm
+locate
+keybindings-menu
 
 # --- content assertions that do not hold on this platform ------------------
-# system-sleep-ownership-migration quarantines a path behind a root-only
-# directory, which the runner's layout does not reproduce.
-system-sleep-ownership-migration
+#   clipboard, notification-send, agent-usage-fireworks-scanner
+# kitty-config fails because a migration calls gum, and the shim only reaches
+# PATH by being installed at /usr/local/bin -- the right shape for a checkout
+# and the wrong one here.
 clipboard
 notification-send
-agent-usage-codex-scanner
 agent-usage-fireworks-scanner
-browser-policy-dir
-plugin-clone
-keybindings-menu
+kitty-config
+system-sleep-ownership-migration
+
+# --- the machine the runner is --------------------------------------------
+# The tree is not root-owned, so omarchy-plymouth-set refuses to publish.
+plymouth-set
+# Hardware the runner does not have.
+hw-hybrid-gpu
 
 # --- Arch-only, and the port declares them unsupported ---------------------
 # vercmp is an Arch pacman utility; these are the Arch kernel and the legacy
 # udev rules the port names in docs/file-layout.md.
 neovim-remote-yanks
 kernel-headers-migration
+omarchy-kernel-migration
 legacy-power-udev-rules-migration
+
+# --- a workstation, not the runner -----------------------------------------
+# This tree's umask on a developer box is 0002, so migration files are written
+# 0664 and the tests that require 0644 fail, and nopasswd-sudo-expiry needs a
+# privileged helper the runner does not have. Named here rather than on the
+# list, because putting them on it would fail the build.
+#   hermes-skin-migration, omasnap, nopasswd-sudo-expiry
+# system-sleep-ownership-migration fails on the runner for a different reason
+# than it does here, and is not on the list either way.

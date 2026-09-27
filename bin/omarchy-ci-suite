@@ -31,20 +31,36 @@ fi
 "$root/test/all" >"$log" 2>&1
 suite_status=$?
 
-# The runner prints `==> <path>` before each file and `not ok - <name>` on
-# failure, so a failing file is the one the last `not ok` belongs to.
+# Read the runner's own summary rather than re-deriving it. `./test/shell`
+# prints "N of M test files failed:" followed by the list, and it knows things
+# a `not ok` line does not say -- a file that exits non-zero without printing
+# one, or a suite other than the shell one. Parsing the answer rather than
+# reimplementing the question is the whole reason to run the suite at all.
 mapfile -t failed < <(
-  awk '/^==> /{ file = $2 }
-       /^not ok - /{
-         sub(/^test\/shell\.d\//, "", file)
-         sub(/-test\.sh$/, "", file)
-         sub(/^test\//, "", file)
-         print file
-       }' "$log" |
+  awk '
+    /of [0-9]+ test files failed:/ { collecting = 1; suites = 0; next }
+    /of [0-9]+ suites failed:/ { collecting = 1; suites = 1; next }
+    collecting && /^  / {
+      path = $1
+      sub(/^test\/shell\.d\//, "", path)
+      sub(/-test\.sh$/, "", path)
+      sub(/^test\//, "", path)
+      # `test/shell` is a suite, never a test file, and its failures are the
+      # ones enumerated by file above it. Counting it would mean a permanently
+      # red entry that no single file could ever clear.
+      if (path == "shell") next
+      print path
+      next
+    }
+    collecting { collecting = 0 }
+  ' "$log" |
     sort -u
 )
 
-mapfile -t expected < <(grep -vE '^[[:space:]]*(#|$)' "$known" | sort -u)
+# A reason on the same line is a reasonable thing to write, so it is stripped
+# rather than being silently read as part of a name -- which would make the
+# list look permanently stale.
+mapfile -t expected < <(sed 's/[[:space:]]*#.*$//' "$known" | grep -vE '^[[:space:]]*$' | sort -u)
 
 new=$(comm -23 <(printf '%s\n' "${failed[@]:-}") <(printf '%s\n' "${expected[@]:-}") | grep -v '^$')
 fixed=$(comm -13 <(printf '%s\n' "${failed[@]:-}") <(printf '%s\n' "${expected[@]:-}") | grep -v '^$')

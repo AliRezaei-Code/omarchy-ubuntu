@@ -37,7 +37,8 @@ jobs:
           echo 'Etc/UTC' | sudo tee /etc/timezone >/dev/null
           sudo apt-get install -y --no-install-recommends \
             jq python3 lua5.4 imagemagick ffmpeg util-linux plocate \
-            desktop-file-utils fontconfig file gcc x11-xkb-utils
+            desktop-file-utils fontconfig file gcc x11-xkb-utils \
+            ripgrep fzf
 
       - name: Report which checks will be skipped
         run: |
