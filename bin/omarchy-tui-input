@@ -1,0 +1,209 @@
+#!/bin/bash
+
+# omarchy:summary=Prompt for a single line of text in the terminal
+# omarchy:group=tui
+# omarchy:name=input
+# omarchy:args=[--header T] [--prompt P] [--placeholder T] [--password]
+# omarchy:examples=omarchy-tui-input --prompt "Name> "|omarchy tui input --header "Enter Windows username:"
+
+# The headless replacement for `gum input`. The prompt and the header are
+# drawn on stderr and the answer is the only thing on stdout, so
+# `answer=$(omarchy-tui-input --prompt "Name> ")` is the whole contract.
+#
+# The placeholder behaves the way gum's does: it is drawn as ghost text while
+# the line is empty, and an untouched line submits the placeholder rather than
+# an empty string. That is what makes "Press enter to use the default" work.
+# --password draws one dot per character, never the character itself.
+#
+# Exit codes, shared by every omarchy-tui-* primitive:
+#   0   a line was submitted; it is on stdout
+#   1   the user cancelled with esc or ctrl-c, or the input ended
+#   2   there is no terminal to read from, or to draw on
+#   64  the command line is wrong
+
+set -euo pipefail
+
+header=""
+prompt="> "
+placeholder=""
+password=0
+
+usage() {
+  echo "Usage: omarchy-tui-input [--header T] [--prompt P] [--placeholder T] [--password]" >&2
+}
+
+while (( $# > 0 )); do
+  arg="$1"
+  shift
+  case "$arg" in
+  --header)
+    (( $# > 0 )) || { echo "omarchy-tui-input: --header requires a value" >&2; exit 64; }
+    header="$1"
+    shift
+    ;;
+  --prompt)
+    (( $# > 0 )) || { echo "omarchy-tui-input: --prompt requires a value" >&2; exit 64; }
+    prompt="$1"
+    shift
+    ;;
+  --placeholder)
+    (( $# > 0 )) || { echo "omarchy-tui-input: --placeholder requires a value" >&2; exit 64; }
+    placeholder="$1"
+    shift
+    ;;
+  --password)
+    password=1
+    ;;
+  --)
+    break
+    ;;
+  -*)
+    echo "omarchy-tui-input: unknown option '$arg'" >&2
+    usage
+    exit 64
+    ;;
+  *)
+    # Input takes no operands, so the first one ends flag parsing and is a
+    # mistake worth naming. The operand was shifted before the case ran, so
+    # put it back.
+    set -- "$arg" "$@"
+    break
+    ;;
+  esac
+done
+
+if (( $# > 0 )); then
+  echo "omarchy-tui-input: unexpected argument '$1'" >&2
+  usage
+  exit 64
+fi
+
+# gum draws its prompt on stderr, so a redirected stderr is a question nobody
+# can answer. bin/omarchy-remove-ai-perplexity guards on the same two tests.
+[[ -t 2 ]] || {
+  echo "omarchy-tui-input: stderr is not a terminal, so the prompt would be invisible" >&2
+  exit 2
+}
+
+if [[ -t 0 ]]; then
+  exec 3<&0
+else
+  if (: <>/dev/tty) 2>/dev/null; then
+    exec 3<>/dev/tty
+  else
+    echo "omarchy-tui-input: no terminal to read from (stdin is not a terminal and /dev/tty is unavailable)" >&2
+    exit 2
+  fi
+fi
+
+tty_saved=$(stty -g <&3 2>/dev/null) || tty_saved=""
+if [[ -n $tty_saved ]]; then
+  restore_tty() {
+    stty "$tty_saved" <&3 2>/dev/null || true
+  }
+  trap restore_tty EXIT
+  # Raw input, because a line editor that needs an enter per keystroke is not
+  # one. ISIG stays off so ctrl-c arrives as a byte to cancel on rather than
+  # a signal; OPOST/ONLCR come back so the redraw moves down a line.
+  stty raw -echo <&3 2>/dev/null || true
+  stty opost onlcr <&3 2>/dev/null || true
+fi
+
+term_size=$(stty size <&3 2>/dev/null) || term_size=""
+term_cols=80
+if [[ $term_size =~ ^([0-9]+)[[:space:]]+([0-9]+)$ ]]; then
+  term_cols="${BASH_REMATCH[2]}"
+fi
+# A pty nobody sized reports 0 columns, which is not a real 0-wide terminal;
+# assume 80 rather than clip the prompt down to nothing.
+(( term_cols > 0 )) || term_cols=80
+
+value=""
+drawn=0
+
+# The ghost placeholder shares the input line, so the prompt is redrawn rather
+# than printed once. drawn counts the newlines the last render emitted, which
+# is exactly how far the cursor has to travel back up to redraw in place, and
+# clearing to the end of the line is what stops a shrinking buffer from leaving
+# the tail of the old one behind.
+render() {
+  local shown="$value"
+  local dots=""
+  local budget=0
+
+  if (( password == 1 )); then
+    # One substitution, not a loop appending a dot at a time: the line editor
+    # redraws on every keystroke, and this is the one thing that grows with
+    # what has been typed.
+    dots="${value//?/*}"
+    shown="$dots"
+  elif [[ -z $value && -n $placeholder ]]; then
+    shown="$placeholder"
+  fi
+
+  (( drawn > 0 )) && printf '\033[%dA' "$drawn" >&2
+
+  drawn=0
+  if [[ -n $header ]]; then
+    printf '\r\033[2K%s\n' "${header:0:$((term_cols - 1))}" >&2
+    drawn=1
+  fi
+
+  budget=$((term_cols - ${#prompt} - 1))
+  (( budget < 0 )) && budget=0
+  printf '\r\033[2K%s%s\033[K' "${prompt:0:$((term_cols - 1))}" "${shown:0:$budget}" >&2
+  return 0
+}
+
+KEY=""
+KEY_EOF=0
+
+# -N, not -n: -n stops at a delimiter and swallows the newline a canonical
+# terminal hands back for enter, -N hands over the byte itself.
+read_key() {
+  KEY_EOF=0
+  KEY=""
+  local char=""
+  if ! IFS= read -r -s -N 1 char <&3; then
+    KEY_EOF=1
+    return 0
+  fi
+  KEY="$char"
+  # 0x04 is end-of-transmission, which POSIX defines as end of input; the pty
+  # driver behind script(1) uses it to close out a scripted session.
+  [[ $KEY == $'\x04' ]] && KEY_EOF=1
+  return 0
+}
+
+while :; do
+  render
+
+  read_key
+  if (( KEY_EOF == 1 )); then
+    printf '\n' >&2
+    exit 1
+  fi
+
+  case "$KEY" in
+  $'\r' | $'\n')
+    printf '\n' >&2
+    # An untouched line takes the placeholder, the way gum does.
+    [[ -z $value ]] && value="$placeholder"
+    printf '%s\n' "$value"
+    exit 0
+    ;;
+  $'\x1b' | $'\x03')
+    printf '\n' >&2
+    exit 1
+    ;;
+  $'\x15')
+    value=""
+    ;;
+  $'\x7f' | $'\b')
+    (( ${#value} > 0 )) && value="${value%?}"
+    ;;
+  *)
+    value+="$KEY"
+    ;;
+  esac
+done

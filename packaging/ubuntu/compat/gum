@@ -1,0 +1,193 @@
+#!/bin/bash
+
+# A stand-in for the `gum` binary, which jammy does not package.
+#
+# gum is a substitute for a missing third-party program, not a rename alias for
+# anything in this tree. It speaks only the flag vocabulary the 40-odd call
+# sites in bin/ actually use, and it forwards to the omarchy-tui-* primitives.
+# Anything outside that vocabulary -- an unknown subcommand, an unknown flag --
+# exits 64 naming what it did not recognise, because a call site that quietly
+# loses a flag is a bug on someone's machine that nobody can see. The
+# vocabulary is pinned by test/shell.d/gum-compat-test.sh, so widening it is a
+# deliberate edit to both files, never an accident.
+#
+# gum draws its prompts on stderr and returns its value on stdout, and so do
+# the primitives, which is what lets `answer=$(gum input ...)` keep working.
+# Every subcommand exits 0 on an answer and 1 on a cancel, matching gum.
+
+set -uo pipefail
+
+PROGRAM=gum
+
+# 0 answered, 1 cancelled, 2 no terminal to ask in, 64 unsupported call.
+unsupported() {
+  echo "$PROGRAM: $1" >&2
+  exit 64
+}
+
+# The primitives ship as /usr/bin/omarchy-tui-*, and a checkout has them in
+# the tree's bin/, so a system install and a working tree both resolve.
+resolve_primitive() {
+  local name="$1"
+  local found=""
+  local compat_dir=${BASH_SOURCE[0]%/*}
+
+  found=$(command -v "$name" 2>/dev/null) && [[ -n $found ]] && {
+    printf '%s\n' "$found"
+    return 0
+  }
+
+  if [[ -n ${OMARCHY_PATH:-} && -x ${OMARCHY_PATH}/bin/$name ]]; then
+    printf '%s\n' "${OMARCHY_PATH}/bin/$name"
+    return 0
+  fi
+
+  # A checkout keeps the primitives three levels up, at the tree's bin/.
+  if [[ -x $compat_dir/../../../bin/$name ]]; then
+    printf '%s\n' "${compat_dir}/../../../bin/$name"
+    return 0
+  fi
+
+  return 1
+}
+
+primitive() {
+  local path=""
+  path=$(resolve_primitive "$1") ||
+    unsupported "'$1' is not installed; put the Omarchy bin directory on PATH"
+  shift
+  "$path" "$@"
+}
+
+declare -A flag_values=()
+
+# Splits argv into flags and operands. A token carrying '=' is always a
+# value flag, and a bare token is a value flag when the vocabulary says so and
+# a boolean when it does not; a name in neither list is the loud failure.
+parse_flags() {
+  local value_flags="$1"
+  local bool_flags="$2"
+  shift 2
+
+  local token=""
+  local name=""
+  local value=""
+
+  while (( $# > 0 )); do
+    token="$1"
+    [[ $token == --* ]] || break
+
+    if [[ $token == *=* ]]; then
+      name="${token#--}"
+      name="${name%%=*}"
+      value="${token#*=}"
+      [[ " $value_flags " == *" $name "* ]] || unsupported "unhandled flag '$token'"
+      flag_values[$name]="$value"
+    else
+      name="${token#--}"
+      if [[ " $bool_flags " == *" $name "* ]]; then
+        flag_values[$name]=true
+      elif [[ " $value_flags " == *" $name "* ]]; then
+        shift
+        (( $# > 0 )) || unsupported "flag '$token' requires a value"
+        flag_values[$name]="$1"
+      else
+        unsupported "unhandled flag '$token'"
+      fi
+    fi
+    shift
+  done
+  # A function's positional parameters are its own, so the operands come back
+  # through a global rather than through the caller's "$@".
+  REST=("$@")
+  return 0
+}
+
+if (( $# == 0 )); then
+  unsupported "a subcommand is required (choose, input, confirm, style)"
+fi
+
+subcommand="$1"
+shift
+
+case "$subcommand" in
+choose)
+  # gum choose reads its rows from stdin, or from trailing arguments when
+  # stdin is the terminal. The primitive wants the same split, so operands
+  # are fed to it on stdin and the caller's own stdin is passed through
+  # untouched when there are none.
+  parse_flags "height selected header cursor.foreground" "" "$@"
+
+  args=()
+  [[ -n ${flag_values[header]:-} ]] && args+=(--header "${flag_values[header]}")
+  # --height is gum's window size in rows, which is what the primitive calls
+  # its maxheight.
+  [[ -n ${flag_values[height]:-} ]] && args+=(--maxheight "${flag_values[height]}")
+  [[ -n ${flag_values[selected]:-} ]] && args+=(--selected "${flag_values[selected]}")
+  # cursor.foreground is a colour for a renderer that is not here, so it goes no
+  # further; the list is drawn with plain terminal escapes instead.
+
+  if (( ${#REST[@]} > 0 )); then
+    printf '%s\n' "${REST[@]}" | primitive omarchy-tui-choose "${args[@]}"
+  else
+    primitive omarchy-tui-choose "${args[@]}"
+  fi
+  exit $?
+  ;;
+
+input)
+  parse_flags "height header placeholder prompt prompt.foreground" "password" "$@"
+
+  args=()
+  [[ -n ${flag_values[header]:-} ]] && args+=(--header "${flag_values[header]}")
+  [[ -n ${flag_values[prompt]:-} ]] && args+=(--prompt "${flag_values[prompt]}")
+  [[ -n ${flag_values[placeholder]:-} ]] && args+=(--placeholder "${flag_values[placeholder]}")
+  [[ -n ${flag_values[password]:-} ]] && args+=(--password)
+  # height sizes a box this primitive does not draw, and prompt.foreground is
+  # a colour with no renderer here; both are dropped rather than guessed at.
+
+  (( ${#REST[@]} == 0 )) || unsupported "gum input takes no operands, got '${REST[0]}'"
+  primitive omarchy-tui-input "${args[@]}"
+  exit $?
+  ;;
+
+confirm)
+  parse_flags "default affirmative negative header" "default" "$@"
+
+  args=()
+  if [[ ${flag_values[default]:-} == "false" ]]; then
+    args+=(--default=false)
+  else
+    # gum's unqualified --default selects the affirmative button, and so does
+    # saying nothing at all.
+    args+=(--default)
+  fi
+  [[ -n ${flag_values[affirmative]:-} ]] && args+=(--affirmative "${flag_values[affirmative]}")
+  [[ -n ${flag_values[negative]:-} ]] && args+=(--negative "${flag_values[negative]}")
+  [[ -n ${flag_values[header]:-} ]] && args+=(--header "${flag_values[header]}")
+
+  (( ${#REST[@]} > 0 )) || unsupported "gum confirm needs a question"
+  primitive omarchy-tui-confirm "${args[@]}" "${REST[@]}"
+  exit $?
+  ;;
+
+style)
+  # gum style is pure presentation: --border, --padding, --margin, --bold and
+  # --foreground describe a box and some colours for a renderer that is not
+  # here. There is no renderer, so the shim keeps the words and drops the
+  # presentation. Call sites that already build their own "  - " markers keep
+  # them, which is why they still read correctly.
+  parse_flags "border padding margin foreground" "bold" "$@"
+
+  (( ${#REST[@]} > 0 )) || unsupported "gum style needs something to print"
+  # One operand per line, which is what gum does with them: a call site that
+  # passes several strings is building a paragraph, and joining them with
+  # spaces would run it into a single unreadable line.
+  printf '%s\n' "${REST[@]}"
+  exit 0
+  ;;
+
+*)
+  unsupported "unhandled subcommand '$subcommand'"
+  ;;
+esac

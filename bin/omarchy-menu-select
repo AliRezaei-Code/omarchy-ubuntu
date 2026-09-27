@@ -67,6 +67,46 @@ if (( ${#options[@]} == 0 )); then
   exit 1
 fi
 
+# The shell draws the menu; when it is not running there is nobody to draw it
+# and the handshake below would spin on a done file that never appears. Probe
+# the same way bin/omarchy-restart-shell does before committing to that wait,
+# and hand the prompt to the terminal picker instead.
+if ! omarchy-shell shell ping >/dev/null 2>&1; then
+  # The glyph column and the two-line label/subtext layout are Quickshell
+  # presentation with no headless equivalent, so the fallback draws one row
+  # per line and drops the glyph. The value is untouched: the row handed to
+  # the picker is already what a caller gets back, and the picker's stdout
+  # carries no header or status, so --width has nothing to apply to here.
+  rows=()
+  for option in "${options[@]}"; do
+    # An option is "label", "glyph<TAB>label" or "glyph<TAB>label<TAB>subtext",
+    # and the glyph is never returned. Tab is the only separator, and tab is
+    # IFS whitespace, so runs of tabs collapse and a trailing one drops: the
+    # three shapes above are the whole contract, and an empty option stays an
+    # empty option rather than becoming a read error.
+    fields=()
+    if [[ -n $option ]]; then
+      IFS=$'\t' read -r -a fields <<<"$option" || true
+    fi
+    case ${#fields[@]} in
+    0 | 1) rows+=("$option") ;;
+    2) rows+=("${fields[1]}") ;;
+    *) rows+=("${fields[1]}"$'\t'"${fields[2]}") ;;
+    esac
+  done
+
+  args=(--header "$prompt")
+  [[ -n $menu_maxheight ]] && args+=(--maxheight "$menu_maxheight")
+
+  status=0
+  selection=$(printf '%s\n' "${rows[@]}" | omarchy-tui-choose "${args[@]}") || status=$?
+  if (( status != 0 )); then
+    exit "$status"
+  fi
+  printf '%s\n' "$selection"
+  exit 0
+fi
+
 selection_file=$(mktemp)
 done_file=$(mktemp)
 rm -f "$done_file"
