@@ -33,17 +33,23 @@ omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
 omarchy_path=${omarchy_path%/}
 export OMARCHY_PATH="$omarchy_path"
 
-# Resolved next to this script rather than under OMARCHY_PATH, so a checkout
-# reads the checkout's menu and an installed tree reads its own. OMARCHY_PATH
-# still decides which tree of menu data to read.
-module="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../shell/plugins/menu/MenuSnapshot.js"
+# OMARCHY_PATH first, then the tree next to this script. A packaged install
+# runs this from /usr/bin with no tree above it, so "next to me" alone finds
+# nothing -- and a checkout has no OMARCHY_PATH pointing at itself unless the
+# caller set one. A checkout therefore has to work the second way round, which
+# is the order these are tried in.
+if [[ -r "$omarchy_path/shell/plugins/menu/MenuSnapshot.js" ]]; then
+  module_path="$omarchy_path/shell/plugins/menu/MenuSnapshot.js"
+else
+  module_path="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../shell/plugins/menu/MenuSnapshot.js"
+fi
 
-if [[ ! -r $module ]]; then
-  echo "omarchy-menu-snapshot: $module is missing; this Omarchy install is incomplete" >&2
+if [[ ! -r $module_path ]]; then
+  echo "omarchy-menu-snapshot: $module_path is missing; this Omarchy install is incomplete" >&2
   exit 1
 fi
 
 # The module decides for itself which tree to read: $OMARCHY_PATH when the
 # caller set one, $ROOT when a harness pinned it, and the packaged path
 # otherwise. Arguments pass through untouched.
-exec "$node_bin" "$module" "$@"
+exec "$node_bin" "$module_path" "$@"
