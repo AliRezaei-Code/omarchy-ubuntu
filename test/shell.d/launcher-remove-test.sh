@@ -38,11 +38,29 @@ chmod +x "$tmp_dir/bin/update-desktop-database"
 
 cat >"$tmp_dir/bin/pacman" <<'SCRIPT'
 #!/bin/bash
-if [[ $1 == "-Qqo" && $2 == */native.desktop ]]; then
-  printf 'native-pkg\n'
-fi
+[[ $1 == "-Qqo" ]] || exit 1
+for arg in "$@"; do
+  if [[ $arg == */native.desktop ]]; then
+    printf 'native-pkg\n'
+    exit 0
+  fi
+done
 SCRIPT
 chmod +x "$tmp_dir/bin/pacman"
+
+# dpkg answers the same question with a "package: path" line, and the seam cuts
+# the name off the front of it.
+cat >"$tmp_dir/bin/dpkg-query" <<'SCRIPT'
+#!/bin/bash
+[[ $1 == "-S" ]] || exit 1
+for arg in "$@"; do
+  if [[ $arg == */debnative.desktop ]]; then
+    printf 'omarchy-shell: %s\n' "$arg"
+    exit 0
+  fi
+done
+SCRIPT
+chmod +x "$tmp_dir/bin/dpkg-query"
 
 cat >"$tmp_dir/data/applications/Basecamp.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -60,6 +78,12 @@ cat >"$tmp_dir/system/applications/native.desktop" <<'DESKTOP'
 [Desktop Entry]
 Name=Native
 Exec=native
+DESKTOP
+
+cat >"$tmp_dir/system/applications/debnative.desktop" <<'DESKTOP'
+[Desktop Entry]
+Name=Debnative
+Exec=debnative
 DESKTOP
 
 cat >"$tmp_dir/data/applications/aliens.desktop" <<'DESKTOP'
@@ -94,3 +118,17 @@ pass "launcher remove deletes user-owned desktop files"
 
 (( ${#lines[@]} == 3 )) || fail "launcher remove does not notify for user-owned desktop files" "$(printf '%s\n' "${lines[@]}")"
 pass "launcher remove does not notify for user-owned desktop files"
+
+# The uninstall line is a string for a terminal, so on Ubuntu it has to name apt
+# and its flags rather than pacman's.
+: >"$TEST_LOG"
+OMARCHY_PKG_BACKEND=deb "$ROOT/bin/omarchy-remove-launcher-entry" debnative.desktop Debnative
+
+mapfile -t deb_lines <"$TEST_LOG"
+
+[[ ${deb_lines[0]} == "terminal::echo Uninstalling Debnative...; sudo apt-get remove -y --purge omarchy-shell" ]] ||
+  fail "launcher remove uninstalls through apt on the deb backend" "${deb_lines[0]}"
+pass "launcher remove uninstalls through apt on the deb backend"
+
+(( ${#deb_lines[@]} == 1 )) || fail "launcher remove emits one line for a package-owned desktop file" "$(printf '%s\n' "${deb_lines[@]}")"
+pass "launcher remove emits one line for a package-owned desktop file"

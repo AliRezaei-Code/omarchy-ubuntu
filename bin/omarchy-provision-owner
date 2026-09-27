@@ -13,6 +13,8 @@
 
 set -euo pipefail
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
 PROVISIONING_DIR=/var/lib/omarchy/provisioning
 OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 LOG_FILE=/var/log/omarchy-provision-owner.log
@@ -682,8 +684,8 @@ user_groups() {
       # whose installer deliberately grants access to raw input devices.
       [[ $group == "docker" ]] && continue
       if [[ $group == "input" ]] &&
-        ! pacman -Qq xpadneo-dkms &>/dev/null &&
-        ! pacman -Qq ydotool &>/dev/null; then
+        ! omarchy_pkg_query "$(omarchy_pkg_backend)" xpadneo-dkms &>/dev/null &&
+        ! omarchy_pkg_query "$(omarchy_pkg_backend)" ydotool &>/dev/null; then
         continue
       fi
       getent group "$group" >/dev/null || continue

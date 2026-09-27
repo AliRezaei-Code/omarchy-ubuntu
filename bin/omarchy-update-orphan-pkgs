@@ -5,7 +5,10 @@
 
 set -e
 
-mapfile -t orphans < <(pacman -Qtdq 2>/dev/null || true)
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+backend=$(omarchy_pkg_backend) || exit $?
+
+mapfile -t orphans < <(omarchy_pkg_orphans "$backend" 2>/dev/null || true)
 (( ${#orphans[@]} )) || exit 0
 
 echo -e "\e[32m\nOrphan system packages\e[0m"
@@ -25,5 +28,5 @@ if ! gum confirm --default=false "Remove ${#orphans[@]} orphaned package(s)?"; t
 fi
 
 echo -e "\e[32m\nRemoving orphan system packages\e[0m"
-sudo pacman -Rns "${orphans[@]}"
+omarchy_pkg_remove "$backend" --autoremove "${orphans[@]}"
 echo

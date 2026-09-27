@@ -7,6 +7,11 @@
 
 set -e
 
+# Resolved next to this script rather than off PATH: the shell tests invoke
+# commands by absolute path, and a helper that only answered when PATH happened
+# to include bin/ would be a trap in exactly the places that reach for it most.
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
 desktop_id="${1-}"
 entry_name="${2-}"
 
@@ -84,11 +89,24 @@ if is_user_desktop_file; then
   exit 0
 fi
 
-if package_name="$(pacman -Qqo "$desktop_file" 2>/dev/null | head -1)" && [[ -n $package_name ]]; then
+backend=$(omarchy_pkg_backend) || exit $?
+
+if package_name="$(omarchy_pkg_owner "$backend" "$desktop_file")" && [[ -n $package_name ]]; then
   display_name="${entry_name:-$desktop_name}"
   quoted_package="$(printf '%q' "$package_name")"
   quoted_display="$(printf '%q' "$display_name")"
-  exec omarchy-launch-floating-terminal-with-presentation "echo Uninstalling $quoted_display...; sudo pacman -Rns $quoted_package"
+
+  # This is a string handed to a terminal for the user to run, not something
+  # this script executes, so it cannot be routed through the seam and has to
+  # be spelled out per backend. pacman's -Rns takes the dependency chain with
+  # it; apt's remove does not, so Ubuntu gets the purge form it understands.
+  if [[ $backend == "arch" ]]; then
+    uninstall_command="sudo pacman -Rns $quoted_package"
+  else
+    uninstall_command="sudo apt-get remove -y --purge $quoted_package"
+  fi
+
+  exec omarchy-launch-floating-terminal-with-presentation "echo Uninstalling $quoted_display...; $uninstall_command"
 fi
 
 if omarchy-cmd-present flatpak && flatpak info "${desktop_file_name%.desktop}" >/dev/null 2>&1; then

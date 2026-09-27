@@ -3,9 +3,28 @@
 # omarchy:summary=Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
 # omarchy:requires-sudo=true
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
+backend=$(omarchy_pkg_backend) || exit $?
+
+# fzf hands --preview to a fresh shell, so the seam has to be reachable there
+# by path. Absolute, because that shell's working directory is fzf's.
+backend_script="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/omarchy-pkg-backend"
+
+# Exported so the preview resolves the same backend this picker did, rather
+# than re-asking a machine whose answer has not changed.
+export OMARCHY_PKG_BACKEND="$backend"
+
+pkg_preview=". \"$backend_script\"; omarchy_pkg_info \"\$OMARCHY_PKG_BACKEND\" {1}"
+
+# apt-cache show prints a wall of wrapped text; pacman -Si fits a pane.
+if [[ $backend == "deb" ]]; then
+  pkg_preview+=" | fold -s"
+fi
+
 fzf_args=(
   --multi
-  --preview 'pacman -Sii {1}'
+  --preview "$pkg_preview"
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
@@ -15,12 +34,12 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(pacman -Slq | fzf "${fzf_args[@]}")
+pkg_names=$(omarchy_pkg_search "$backend" "" | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
   source omarchy-sudo-keepalive
 
-  # Convert newline-separated selections to space-separated for pacman
-  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm
+  read -r -a selected <<<"$pkg_names"
+  omarchy_pkg_install "$backend" "${selected[@]}"
   omarchy-show-done $?
 fi

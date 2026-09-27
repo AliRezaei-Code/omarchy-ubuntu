@@ -1,9 +1,33 @@
 #!/bin/bash
 
-# omarchy:summary=Update system packages with pacman
+# omarchy:summary=Update system packages
 # omarchy:requires-sudo=true
 
 set -e
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
+backend=$(omarchy_pkg_backend) || exit $?
+
+# Everything below is an answer to a pacman-specific failure mode: a conflict
+# handler, a report to parse, and --overwrite for files that land in
+# /usr/share/omarchy unowned. dpkg replaces what the package database owns and
+# conffiles are answered by confold, so there is no analogue of any of it to
+# reach for, and the upgrade is a plain one.
+#
+# APT::Upgrade-Allow-New is what lets a new Omarchy release pull in dependencies
+# that did not exist when it was cut; without it a release that adds a
+# dependency could never install, which is the same hole --needed closes for
+# pacman. --force-confold keeps the running version of a conffile dpkg is being
+# asked to change, so an unattended update cannot stall on a prompt -- this is
+# what unattended-upgrades does.
+if [[ $backend == "deb" ]]; then
+  echo -e "\e[32m\nUpdate system packages\e[0m"
+  "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-transaction" --update \
+    env DEBIAN_FRONTEND=noninteractive \
+    apt-get -y -o Dpkg::Options::=--force-confold -o APT::Upgrade-Allow-New=true upgrade
+  exit 0
+fi
 
 # The conflict handler's last resort: pacman puts its questions to the person
 # running the update instead of answering them itself. Nothing here may capture

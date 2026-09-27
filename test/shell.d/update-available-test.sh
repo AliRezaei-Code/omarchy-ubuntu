@@ -13,6 +13,7 @@ mkdir -p "$stub_bin"
 
 cat >"$stub_bin/checkupdates" <<'SH'
 #!/bin/bash
+printf 'called\n' >>"$TEST_CHECKUPDATES_LOG"
 case "${TEST_CHECKUPDATES:-updates}" in
   updates)
     printf 'linux 6.1-1 -> 6.1-2\nomarchy 4.0.0-1 -> 4.0.1-1\nomarchy-settings 4.0.0-1 -> 4.0.1-1\nomarchy-dev 4.1.0-1 -> 4.1.1-1\nomarchy-settings-dev 4.1.0-1 -> 4.1.1-1\n'
@@ -28,30 +29,61 @@ case "${TEST_CHECKUPDATES:-updates}" in
 esac
 SH
 chmod +x "$stub_bin/checkupdates"
-
+# The backend seam asks `pacman -Q -- <name>`, so the stub answers that rather
+# than the -Qq of an older revision of the checker.
 cat >"$stub_bin/pacman" <<'SH'
 #!/bin/bash
-case "$1" in
-  -Qq)
-    case "${TEST_INSTALLED_PACKAGE:-omarchy}" in
-      omarchy)
-        [[ $2 == "omarchy" ]]; exit $?
-        ;;
-      omarchy-dev)
-        [[ $2 == "omarchy-dev" ]]; exit $?
-        ;;
-      both)
-        [[ $2 == "omarchy" || $2 == "omarchy-dev" ]]; exit $?
-        ;;
-      none)
-        exit 1
-        ;;
+[[ $1 == -Q || $1 == -Qq ]] || exit 0
+for package in "$@"; do :; done
+case "${TEST_INSTALLED_PACKAGE:-omarchy}" in
+  omarchy)
+    [[ $package == "omarchy" ]]; exit $?
+    ;;
+  omarchy-dev)
+    [[ $package == "omarchy-dev" ]]; exit $?
+    ;;
+  both)
+    [[ $package == "omarchy" || $package == "omarchy-dev" ]]; exit $?
+    ;;
+  none)
+    exit 1
+    ;;
+esac
+SH
+chmod +x "$stub_bin/pacman"
+
+cat >"$stub_bin/dpkg-query" <<'SH'
+#!/bin/bash
+for package in "$@"; do :; done
+installed_package="${TEST_INSTALLED_PACKAGE:-omarchy}"
+case "$*" in
+  *db:Status-Abbrev*)
+    case "$package" in
+      omarchy) [[ $installed_package == omarchy || $installed_package == both ]] || exit 1 ;;
+      omarchy-dev) [[ $installed_package == omarchy-dev || $installed_package == both ]] || exit 1 ;;
+      *) exit 1 ;;
     esac
+    printf 'ii '
+    ;;
+  *Version*)
+    printf '%s\n' "${TEST_INSTALLED_VERSION:-4.0.0-1}"
     ;;
 esac
 exit 0
 SH
-chmod +x "$stub_bin/pacman"
+chmod +x "$stub_bin/dpkg-query"
+
+cat >"$stub_bin/apt-cache" <<'SH'
+#!/bin/bash
+for package in "$@"; do :; done
+cat <<POLICY
+$package:
+  Installed: ${TEST_INSTALLED_VERSION:-4.0.0-1}
+  Candidate: ${TEST_CANDIDATE_VERSION:-4.0.1-1}
+POLICY
+exit 0
+SH
+chmod +x "$stub_bin/apt-cache"
 
 cat >"$stub_bin/git" <<'SH'
 #!/bin/bash
@@ -90,9 +122,13 @@ esac
 SH
 chmod +x "$stub_bin/git"
 
+# Arch is the default target, so the test says which backend it is exercising
+# instead of inheriting it from whatever the machine running the suite has.
 run_checker() {
   OMARCHY_PATH="${TEST_OMARCHY_PATH:-/usr/share/omarchy}" \
+    OMARCHY_PKG_BACKEND="${TEST_BACKEND:-arch}" \
     TEST_GIT_LOG="$git_log" \
+    TEST_CHECKUPDATES_LOG="$test_tmp/checkupdates.log" \
     PATH="$stub_bin:$PATH" \
     "$ROOT/bin/omarchy-update-available"
 }
@@ -211,3 +247,50 @@ grep -Fx 'omarchy-dev-checkout 1 new commit on origin/quattro' "$stdout" >/dev/n
   fail "update checker reports cached dev commits after a fetch failure" "$(cat "$stdout")"
 [[ ! -s $stderr ]] || fail "update checker keeps dev fetch failures quiet" "$(cat "$stderr")"
 pass "update checker uses cached dev state when fetching is unavailable"
+
+# deb has no checkupdates -- it is a pacman-contrib tool with no Debian
+# equivalent -- so the answer comes from comparing the installed version with
+# the candidate the repositories offer.
+: >"$test_tmp/checkupdates.log"
+if capture_checker "$stdout" "$stderr" TEST_BACKEND=deb TEST_INSTALLED_PACKAGE=omarchy; then
+  status=0
+else
+  status=$?
+fi
+[[ $status -eq 0 ]] || fail "update checker exits successfully when an omarchy upgrade is available on deb"
+grep -Fx 'omarchy upgradable from 4.0.0-1 to 4.0.1-1' "$stdout" >/dev/null ||
+  fail "update checker reports the deb upgrade from installed to candidate" "$(cat "$stdout")"
+[[ ! -s $test_tmp/checkupdates.log ]] ||
+  fail "the deb backend shells out to checkupdates" "$(cat "$test_tmp/checkupdates.log")"
+pass "update checker compares installed and candidate versions on deb"
+
+if capture_checker "$stdout" "$stderr" \
+  TEST_BACKEND=deb \
+  TEST_INSTALLED_PACKAGE=omarchy \
+  TEST_CANDIDATE_VERSION=4.0.0-1; then
+  status=0
+else
+  status=$?
+fi
+[[ $status -eq 1 ]] || fail "update checker exits non-zero when the deb candidate matches the installed version"
+grep -q '^Omarchy is up to date$' "$stdout" || fail "update checker reports an up-to-date deb package" "$(cat "$stdout")"
+pass "update checker reports a deb package with nothing to upgrade to"
+
+if capture_checker "$stdout" "$stderr" TEST_BACKEND=deb TEST_INSTALLED_PACKAGE=both; then
+  status=0
+else
+  status=$?
+fi
+[[ $status -eq 0 ]] || fail "update checker prefers omarchy-dev on deb too"
+grep -Fx 'omarchy-dev upgradable from 4.0.0-1 to 4.0.1-1' "$stdout" >/dev/null ||
+  fail "update checker follows the same package preference on deb" "$(cat "$stdout")"
+pass "update checker keeps the omarchy-dev preference on deb"
+
+if capture_checker "$stdout" "$stderr" TEST_BACKEND=deb TEST_INSTALLED_PACKAGE=none; then
+  status=0
+else
+  status=$?
+fi
+[[ $status -eq 1 ]] || fail "update checker exits non-zero when no Omarchy package is installed on deb"
+[[ ! -s $stderr ]] || fail "update checker is quiet when no Omarchy package is installed on deb"
+pass "update checker ignores a deb system without omarchy installed"

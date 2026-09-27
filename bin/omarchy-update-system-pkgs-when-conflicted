@@ -18,10 +18,22 @@
 
 set -e
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
 [[ ${OMARCHY_UPDATE_CONFLICT:-} == 1 ]] || {
   echo "omarchy-update-system-pkgs-when-conflicted runs as part of omarchy update" >&2
   exit 1
 }
+
+# Every line below reads a pacman error report -- "unresolvable package
+# conflicts detected", "omarchy: /path exists in filesystem" -- and moves files
+# the package database does not own out of the way. dpkg has no such failure
+# mode, so on a backend without one there is nothing here to do but misread a
+# report that was never written; refuse rather than pretend.
+if [[ $(omarchy_pkg_backend) != "arch" ]]; then
+  echo "omarchy: 'pacman conflict recovery' requires an Arch-based Omarchy system" >&2
+  exit 1
+fi
 
 errors=${1:?usage: omarchy-update-system-pkgs-when-conflicted <pacman-error-report>}
 

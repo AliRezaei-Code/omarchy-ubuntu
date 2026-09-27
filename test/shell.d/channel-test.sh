@@ -102,11 +102,24 @@ printf "%s\n" "${OMARCHY_TEST_VERSION_CHANNEL:-unknown}"
 write_stub pacman '#!/bin/bash
 [[ $1 == "-Q" ]] || exit 1
 shift
+# The backend passes every package name after `--`, so an option-shaped name
+# can never be read as an option. Strip it before matching the pairs.
+[[ ${1:-} == "--" ]] && shift
 case "${OMARCHY_TEST_PACKAGES:-}" in
-  stable) [[ $* == "omarchy omarchy-settings" ]] ;;
-  dev) [[ $* == "omarchy-dev omarchy-settings-dev" ]] ;;
+  stable) expected=(omarchy omarchy-settings) ;;
+  dev) expected=(omarchy-dev omarchy-settings-dev) ;;
   *) exit 1 ;;
 esac
+# The backend asks about one package at a time, so answer per name rather than
+# per call: what the channel check needs is that every name it asked about
+# belongs to this channel, not how many calls it took to find that out.
+for want in "$@"; do
+  found=0
+  for candidate in "${expected[@]}"; do
+    [[ $want == "$candidate" ]] && found=1
+  done
+  (( found )) || exit 1
+done
 '
 
 run_channel() {

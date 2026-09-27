@@ -3,6 +3,13 @@
 # omarchy:summary=Show a fuzzy-finder TUI for picking new AUR packages to install.
 # omarchy:requires-sudo=true
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
+if [[ $(omarchy_pkg_backend) != "arch" ]]; then
+  echo "The AUR is only available on Arch-based Omarchy" >&2
+  exit 1
+fi
+
 fzf_args=(
   --multi
   --preview 'yay -Siia {1}'

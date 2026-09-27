@@ -5,6 +5,11 @@
 # omarchy:examples=omarchy debug --print --no-sudo
 # omarchy:requires-sudo=true
 
+# Resolved next to this script rather than off PATH: the shell tests invoke
+# commands by absolute path, and a helper that only answered when PATH happened
+# to include bin/ would be a trap in exactly the places that reach for it most.
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
 NO_SUDO=false
 PRINT_ONLY=false
 
@@ -34,10 +39,49 @@ else
   DMESG_OUTPUT="$(sudo dmesg)"
 fi
 
+backend=$(omarchy_pkg_backend) || exit $?
+
+# A bug report has to say which packages are the user's own picks and which came
+# from somewhere else. Arch decorates that with expac and splits the two sets by
+# subtracting the repository list from the explicit one, leaving the AUR
+# packages behind. Ubuntu has no AUR and no expac: the installed set is the
+# whole answer, and the repository list is never subtracted, because with
+# nothing but the installed set to subtract from, every package would read as
+# having come from outside a repository.
+aur_packages=""
+if [[ $backend == "arch" ]]; then
+  aur_packages=$(
+    comm -13 <(omarchy_pkg_remote_list "$backend" | sort) <(omarchy_pkg_explicit_list "$backend" | sort)
+  )
+fi
+
+packages_section=$(
+  {
+    if [[ $backend == "arch" ]]; then
+      expac -S '%n %v (%r)' $(omarchy_pkg_explicit_list "$backend") 2>/dev/null
+    else
+      omarchy_pkg_explicit_list "$backend"
+    fi
+    [[ -z $aur_packages ]] || printf '%s\n' "$aur_packages" | xargs -r expac -Q '%n %v (AUR)' 2>/dev/null
+  } | sort
+)
+
+# `omarchy_pkg_query` answers a yes/no and throws its output away, but a bug
+# report needs the name and the version it found, which is what `pacman -Q`
+# used to print here. dev first, then the packaged build, same order as before.
+omarchy_package=$(
+  for name in omarchy-dev omarchy; do
+    if omarchy_pkg_query "$backend" "$name"; then
+      printf '%s %s' "$name" "$(omarchy_pkg_version "$backend" "$name")"
+      break
+    fi
+  done
+)
+
 cat > "$LOG_FILE" <<EOF
 Date: $(date)
 Hostname: $(hostname)
-Omarchy Package: $(pacman -Q omarchy-dev 2>/dev/null || pacman -Q omarchy 2>/dev/null || echo "unknown")
+Omarchy Package: ${omarchy_package:-unknown}
 
 =========================================
 SYSTEM INFORMATION
@@ -57,7 +101,7 @@ $(journalctl -b -p 4..1)
 =========================================
 INSTALLED PACKAGES
 =========================================
-$({ expac -S '%n %v (%r)' $(pacman -Qqe) 2>/dev/null; comm -13 <(pacman -Sql | sort) <(pacman -Qqe | sort) | xargs -r expac -Q '%n %v (AUR)'; } | sort)
+$packages_section
 EOF
 
 if [[ $PRINT_ONLY = "true" ]]; then

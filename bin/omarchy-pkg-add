@@ -5,17 +5,18 @@
 # omarchy:examples=omarchy pkg add jq ripgrep
 # omarchy:requires-sudo=true
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
+backend=$(omarchy_pkg_backend) || exit $?
+
 if omarchy-pkg-missing "$@"; then
-  if (( EUID == 0 )); then
-    pacman -S --noconfirm --needed -- "$@" || exit 1
-  else
-    sudo pacman -S --noconfirm --needed -- "$@" || exit 1
-  fi
+  omarchy_pkg_install "$backend" "$@" || exit 1
 fi
 
 for pkg in "$@"; do
-  # Secondary check to handle states where pacman doesn't actually register an error
-  if ! pacman -Q -- "$pkg" &>/dev/null; then
+  # Secondary check to handle states where the package manager doesn't actually
+  # register an error.
+  if ! omarchy_pkg_query "$backend" "$pkg"; then
     echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
     exit 1
   fi

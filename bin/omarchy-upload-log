@@ -4,6 +4,12 @@
 # omarchy:args=<log-file>
 # omarchy:hidden=true
 
+# Resolved next to this script rather than off PATH: the shell tests and the
+# guard batch both invoke commands by absolute path, and a helper that only
+# answered when PATH happened to include bin/ would be a trap in exactly the
+# places that reach for it most.
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
 LOG_TYPE="${1:-install}"
 TEMP_LOG="/tmp/upload-log.txt"
 SYSTEM_INFO="/tmp/system-info.txt"
@@ -123,13 +129,14 @@ last-boot)
 
 installed|system-info)
   # System info plus all installed packages
+  backend=$(omarchy_pkg_backend) || exit $?
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   {
     echo ""
     echo "========================================="
-    echo "INSTALLED PACKAGES (pacman -Q)"
+    echo "INSTALLED PACKAGES ($backend)"
     echo "========================================="
-    pacman -Q 2>/dev/null || echo "Failed to get package list"
+    omarchy_pkg_list_all "$backend" || echo "Failed to get package list"
   } >>"$TEMP_LOG"
 
   if [[ ! -s $TEMP_LOG ]]; then

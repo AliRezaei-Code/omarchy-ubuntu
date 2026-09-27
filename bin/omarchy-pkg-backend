@@ -1,0 +1,289 @@
+#!/bin/bash
+
+# omarchy:summary=Print the active Omarchy package backend (arch or deb).
+# omarchy:hidden=true
+
+# Two lives on purpose. Executed, this is `omarchy pkg backend`: it names the
+# backend so a caller can branch on it without re-deriving the answer. Sourced,
+# it hands over the functions every other omarchy-pkg-* script calls, so the
+# 460 commands that reach for a package go through one place rather than
+# spelling out pacman or apt themselves. `source omarchy-pkg-backend` is the
+# same call omarchy-pkg-install already makes into omarchy-sudo-keepalive.
+
+# OMARCHY_PKG_BACKEND is a statement about the machine under test, so an
+# explicit value is answered without looking at the machine at all. Left unset
+# it means "ask", and pacman wins the ask: an Arch machine is the default
+# target, and a machine with both installed is an Arch machine by definition.
+omarchy_pkg_backend() {
+  case "${OMARCHY_PKG_BACKEND:-auto}" in
+  arch | deb)
+    printf '%s\n' "$OMARCHY_PKG_BACKEND"
+    ;;
+  auto)
+    if command -v pacman >/dev/null 2>&1; then
+      printf 'arch\n'
+    elif command -v dpkg-query >/dev/null 2>&1; then
+      printf 'deb\n'
+    else
+      echo "omarchy-pkg-backend: no supported package manager found (need pacman or dpkg-query)" >&2
+      return 127
+    fi
+    ;;
+  *)
+    echo "omarchy-pkg-backend: unknown backend '$OMARCHY_PKG_BACKEND' (expected arch, deb)" >&2
+    return 2
+    ;;
+  esac
+}
+
+# True when the named package is installed. True for no arguments at all: the
+# menu's guard batch answers from an in-process shadow of this pair, and
+# MenuModel.js pins the pair as agreeing for the empty case, so flipping it
+# here would silently change what the shipped menu shows.
+omarchy_pkg_query() {
+  local backend="$1"
+  shift
+
+  case "$backend" in
+  arch)
+    local package
+    for package in "$@"; do
+      pacman -Q -- "$package" &>/dev/null || return 1
+    done
+    ;;
+  deb)
+    local package status
+    for package in "$@"; do
+      # `rc` is removed-but-not-purged, which apt still lists; only `ii` is
+      # installed, so anything else has to read as absent.
+      status=$(dpkg-query -W -f='${db:Status-Abbrev}' -- "$package" 2>/dev/null) || return 1
+      [[ $status == ii* ]] || return 1
+    done
+    ;;
+  esac
+
+  return 0
+}
+
+# Install, remove, and the four reads the package TUIs need. Each one is the
+# one transaction a backend performs, so a caller never composes a package
+# manager's argv itself.
+#
+# apt is asked for the same silence pacman is given -- --noconfirm here,
+# DEBIAN_FRONTEND=noninteractive there -- because every caller in the tree
+# runs unattended from a hook, a migration, or another command's output, and an
+# apt that finds a tty will block on a question nobody is there to answer.
+omarchy_pkg_install() {
+  local backend="$1"
+  shift
+
+  if [[ $backend == "arch" ]]; then
+    if (( EUID == 0 )); then
+      pacman -S --noconfirm --needed -- "$@"
+    else
+      sudo pacman -S --noconfirm --needed -- "$@"
+    fi
+  else
+    if (( EUID == 0 )); then
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+    else
+      sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+    fi
+  fi
+}
+
+omarchy_pkg_remove() {
+  local backend="$1"
+  local autoremove=0
+
+  if [[ ${2:-} == "--autoremove" ]]; then
+    autoremove=1
+    shift
+  fi
+  shift
+
+  if [[ $backend == "arch" ]]; then
+    if (( EUID == 0 )); then
+      pacman -Rns --noconfirm "$@"
+    else
+      sudo pacman -Rns --noconfirm "$@"
+    fi
+  else
+    # apt's remove does not cascade the way pacman's -Rns does, so a caller
+    # that means "these and whatever only they need" has to ask for it.
+    local -a args=(remove -y --purge)
+    (( autoremove == 0 )) || args+=(--autoremove)
+
+    if (( EUID == 0 )); then
+      DEBIAN_FRONTEND=noninteractive apt-get "${args[@]}" "$@"
+    else
+      sudo env DEBIAN_FRONTEND=noninteractive apt-get "${args[@]}" "$@"
+    fi
+  fi
+}
+
+# What a `pacman -Qtdq` would report. apt has no such query, so this is a
+# simulation parsed for what it would actually do.
+omarchy_pkg_orphans() {
+  local backend="$1"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Qtdq
+  else
+    apt-get -s autoremove 2>/dev/null | awk '/^Inst /{ print $2 }'
+  fi
+}
+
+omarchy_pkg_list() {
+  local backend="$1"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Qq
+  else
+    dpkg-query -W -f='${db:Status-Abbrev} ${binary:Package}\n' 2>/dev/null |
+      awk '$1 ~ /^ii/ { print $2 }'
+  fi
+}
+
+omarchy_pkg_available() {
+  local backend="$1"
+  local name="$2"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Siq -- "$name"
+  else
+    apt-cache show --names-only "$name" 2>/dev/null
+  fi
+}
+
+omarchy_pkg_info() {
+  local backend="$1"
+  local name="$2"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Si -- "$name"
+  else
+    apt-cache show -- "$name" 2>/dev/null
+  fi
+}
+
+omarchy_pkg_search() {
+  local backend="$1"
+  local term="$2"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Slq -- "$term"
+  else
+    apt-cache search --names-only "$term" 2>/dev/null
+  fi
+}
+
+# The update flow asks a few questions the six above do not cover, all of them
+# reads a package manager can answer without a transaction.
+
+# The version a package is at, for `omarchy version` and the upgrade check.
+omarchy_pkg_version() {
+  local backend="$1"
+  local name="$2"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Q -- "$name" 2>/dev/null | awk '{ print $2 }'
+  else
+    dpkg-query -W -f='${Version}' -- "$name" 2>/dev/null
+  fi
+}
+
+# Whether any installed package owns a path. The update flow asks this to tell
+# a kernel the package manager installed from one left behind by an old one.
+omarchy_pkg_owns() {
+  local backend="$1"
+  local path="$2"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Qo -- "$path" &>/dev/null
+  else
+    dpkg-query -S -- "$path" &>/dev/null
+  fi
+}
+
+# Which package owns a path, by name, for uninstalling a desktop entry.
+omarchy_pkg_owner() {
+  local backend="$1"
+  local path="$2"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Qqo -- "$path" 2>/dev/null | head -1
+  else
+    dpkg-query -S -- "$path" 2>/dev/null | head -1 | cut -d: -f1
+  fi
+}
+
+# What the user asked for, as opposed to what came along as a dependency.
+omarchy_pkg_explicit_list() {
+  local backend="$1"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Qqe
+  else
+    # apt records no explicit/auto distinction anywhere dpkg-query can read, so
+    # the installed set is the honest answer rather than a fabricated subset.
+    omarchy_pkg_list "$backend"
+  fi
+}
+
+# Name and version for every installed package, for a bug report.
+omarchy_pkg_list_all() {
+  local backend="$1"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Q
+  else
+    dpkg-query -W -f='${binary:Package} ${Version}\n' 2>/dev/null |
+      awk '$1 != "" { print }'
+  fi
+}
+
+# Every package the configured repositories offer, for comparing what is
+# installed against what is not. Empty on deb, which has no single repository
+# list to enumerate.
+omarchy_pkg_remote_list() {
+  local backend="$1"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Sql
+  fi
+}
+
+# Drop the download cache. apt keeps only the current version of a package, so
+# there is no superseded version to spare and nothing to keep two of; the
+# offline downgrade path Arch relies on has no Debian equivalent.
+omarchy_pkg_prune_cache() {
+  local backend="$1"
+
+  if [[ $backend == "arch" ]]; then
+    sudo paccache -rk2
+  else
+    sudo apt-get clean
+  fi
+}
+
+# The newest version the repositories offer, for telling an upgradeable
+# package from an up-to-date one without running a full update simulation.
+omarchy_pkg_candidate() {
+  local backend="$1"
+  local name="$2"
+
+  if [[ $backend == "arch" ]]; then
+    pacman -Si -- "$name" 2>/dev/null | awk '/^Version/{ print $3; exit }'
+  else
+    apt-cache policy -- "$name" 2>/dev/null | awk '/Candidate:/ { print $2; exit }'
+  fi
+}
+
+# Sourcing defines and returns; executing prints the answer. A caller that
+# wants the functions under a different name can source twice without the
+# second pass running as a script, which is what the BASH_SOURCE test is for.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  omarchy_pkg_backend
+  exit $?
+fi

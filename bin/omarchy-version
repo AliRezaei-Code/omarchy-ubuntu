@@ -2,6 +2,12 @@
 
 # omarchy:summary=Print the installed Omarchy version
 
+# Resolved next to this script rather than off PATH: the shell tests and the
+# guard batch both invoke commands by absolute path, and a helper that only
+# answered when PATH happened to include bin/ would be a trap in exactly the
+# places that reach for it most.
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
 omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
 omarchy_path=${omarchy_path%/}
 
@@ -17,9 +23,14 @@ if [[ $omarchy_path != "/usr/share/omarchy" ]]; then
   exit 0
 fi
 
+# Only an installed tree asks a package manager anything, and which one is
+# answered at runtime: pacman on Arch, dpkg on Ubuntu. A checkout reported its
+# hash and exited above, so it never has to resolve a backend at all.
+backend=$(omarchy_pkg_backend) || exit $?
+
 # The edge channel installs omarchy-dev instead of omarchy, so check both.
 for package in omarchy-dev omarchy; do
-  version=$(pacman -Q "$package" 2>/dev/null | awk '{ print $2 }')
+  version=$(omarchy_pkg_version "$backend" "$package")
   [[ -n $version ]] && break
 done
 

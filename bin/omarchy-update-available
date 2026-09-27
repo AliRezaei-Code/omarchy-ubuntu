@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+backend=$(omarchy_pkg_backend) || exit $?
+
 updates=()
 
 if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
@@ -21,14 +24,24 @@ if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
 fi
 
 package=""
-if pacman -Qq omarchy-dev >/dev/null 2>&1; then
+if omarchy_pkg_query "$backend" omarchy-dev; then
   package=omarchy-dev
-elif pacman -Qq omarchy >/dev/null 2>&1; then
+elif omarchy_pkg_query "$backend" omarchy; then
   package=omarchy
 fi
 
 if [[ -n $package ]]; then
-  update=$(checkupdates --nocolor 2>/dev/null | awk -v package="$package" '$1 == package { print; exit }' || true)
+  if [[ $backend == "arch" ]]; then
+    update=$(checkupdates --nocolor 2>/dev/null | awk -v package="$package" '$1 == package { print; exit }' || true)
+  else
+    # checkupdates is a pacman-contrib tool with no Debian equivalent, so the
+    # deb answer compares the installed version against the candidate one.
+    installed=$(omarchy_pkg_version "$backend" "$package" || true)
+    candidate=$(omarchy_pkg_candidate "$backend" "$package" || true)
+    if [[ -n $installed && -n $candidate && $candidate != "$installed" ]]; then
+      update="$package upgradable from $installed to $candidate"
+    fi
+  fi
 fi
 
 if [[ -n ${update:-} ]]; then
