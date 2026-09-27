@@ -49,6 +49,17 @@ allowed = {
 # retroactively matter for machines that already ran it.
 skip_scripts = {"bin/omarchy-upgrade-to-quattro"}
 
+# Every system path Omarchy writes has to be owned by a package, so the paths
+# the package will install are the thing being checked. On Arch that is the
+# PKGBUILDs in the sibling repository; on Ubuntu it is the deb's manifest,
+# which `omarchy-deb-manifest` derives from the same layout `make deb` stages.
+manifest = root / "packaging/ubuntu/deb/omarchy.manifest"
+if manifest.exists():
+  packaged = "\n".join(manifest.read_text().splitlines())
+  pkgs_root = None
+else:
+  packaged = None
+
 pkgs_candidates = [
   root.parent / "omarchy-pkgs/pkgbuilds",
   root.parent.parent / "omarchy-pkgs/pkgbuilds",
@@ -58,12 +69,13 @@ pkgs_candidates = [
 override = os.environ.get("OMARCHY_PKGS_PATH")
 if override:
   pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
-pkgs_root = next((p for p in pkgs_candidates if p.exists()), None)
-if pkgs_root is None:
-  print("not ok - omarchy-pkgs checkout found for package ownership check", file=sys.stderr)
-  sys.exit(1)
+if packaged is None:
+  pkgs_root = next((p for p in pkgs_candidates if p.exists()), None)
+  if pkgs_root is None:
+    print("not ok - omarchy-pkgs checkout found for package ownership check", file=sys.stderr)
+    sys.exit(1)
 
-packaged = "\n".join(p.read_text() for p in pkgs_root.glob("*/PKGBUILD"))
+  packaged = "\n".join(p.read_text() for p in pkgs_root.glob("*/PKGBUILD"))
 
 # Commands that put a file somewhere, as opposed to reading one.
 # /etc is administrator territory that Omarchy legitimately edits. /usr is

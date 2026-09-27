@@ -28,9 +28,39 @@ while (($#)); do
   esac
 done
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
 OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 STATE_DIR="${OMARCHY_MIGRATION_STATE:-$HOME/.local/state/omarchy/migrations}"
 MIGRATIONS_DIR="$OMARCHY_PATH/migrations"
+backend=$(omarchy_pkg_backend) || exit $?
+
+# The command helper, resolved next to this script: the shell tests and the
+# guard batch invoke commands by absolute path, and bin/ is not on PATH
+# there. Reaching for a package manager by name is a different question
+# from "is this tool available", which is what the helper answers.
+omarchy_cmd_present() { "${BASH_SOURCE[0]%/*}/omarchy-cmd-present" "$@"; }
+
+
+# A migration's first `# omarchy:platform=` line says which package backend it
+# is about. Absent means "both", so no existing migration changes behaviour by
+# being unmarked -- the marker is only ever something new code has to opt into.
+#
+# The reason this exists rather than a try/catch: a migration that re-keys a
+# LUKS volume, moves a Limine entry or rewrites an alpm hook has nothing to do
+# on a machine with no Limine and no alpm, and where it fails is somewhere
+# unrelated to the reason. Standing down is the difference between a quiet
+# login and a login that stops on a line about a bootloader that was never
+# there. The marker is still written, because a migration that never records
+# itself is one re-examined at every login for the rest of the machine's life.
+migration_runs_here() {
+  local file="$1"
+  local declared
+
+  declared=$(head -5 "$file" 2>/dev/null | sed -n 's/^# omarchy:platform=//p' | head -1)
+
+  [[ -z $declared || $declared == "$backend" ]]
+}
 
 migration_entries() {
   [[ -d $MIGRATIONS_DIR ]] || return 0
@@ -49,7 +79,7 @@ pending_migrations() {
 
   while IFS=$'\t' read -r name file marker; do
     [[ -n $name ]] || continue
-    if [[ ! -f $marker ]]; then
+    if [[ ! -f $marker ]] && migration_runs_here "$file"; then
       printf '%s\n' "$name"
     fi
   done < <(migration_entries)
@@ -65,22 +95,72 @@ if [[ $mode == "pending" ]]; then
   fi
 fi
 
-wait_for_pacman_transaction() {
-  local lock_file=/var/lib/pacman/db.lck
+# Existence is only the right test for pacman. pacman creates db.lck when a
+# transaction starts and removes it when it ends, so the file being there means
+# a transaction is running. dpkg's lock-frontend is a permanent file that exists
+# on every Debian install whether apt is running or not -- testing for its
+# existence would stall every login for the full wait on every machine, which
+# is why the deb lock is tested for being *held*.
+lock_is_held() {
+  local lock_file="$1"
 
-  [[ -e $lock_file ]] || return 0
-  echo "Waiting for pacman transaction to finish before running Omarchy migrations..."
+  if [[ $backend == "deb" ]] && omarchy_cmd_present flock; then
+    # A lock we cannot open is a lock we can read nothing from, and these
+    # migrations run unprivileged. /var/lib/dpkg is root-owned on a stock
+    # install, so guessing "held" from an unreadable file would stall every
+    # login on every machine.
+    [[ -r $lock_file ]] || return 1
+
+    # flock succeeding means the lock was free, so nothing is running -- the
+    # opposite of what the exit status reads like at a glance.
+    if flock -n "$lock_file" true 2>/dev/null; then
+      return 1
+    fi
+
+    return 0
+  fi
+
+  [[ -e $lock_file ]]
+}
+
+# A migration rewrites files a running package transaction owns, so it waits
+# for whichever transaction this machine actually has. The bound and the retry
+# semantics are unchanged from the Arch-only version: a lock that outlives the
+# wait is not worth blocking a login over, and the marker is what makes the
+# next attempt happen.
+wait_for_package_transaction() {
+  local lock_file="$OMARCHY_PKG_LOCK"
+  local lock_name="${OMARCHY_PKG_LOCK_NAME:-$backend}"
+
+  lock_is_held "$lock_file" || return 0
+  echo "Waiting for $lock_name transaction to finish before running Omarchy migrations..."
 
   for _ in {1..900}; do
-    [[ -e $lock_file ]] || return 0
+    lock_is_held "$lock_file" || return 0
     sleep 1
   done
 
-  echo "Pacman transaction is still running; Omarchy migrations will retry on next login."
+  echo "The $lock_name transaction is still running; Omarchy migrations will retry on next login."
   exit 0
 }
 
-wait_for_pacman_transaction
+# The name always follows the backend, because it is what the user reads while
+# waiting. The path is overridable so a harness can exercise this without being
+# gated on whatever the host's own package manager happens to be doing.
+case "$backend" in
+arch)
+  OMARCHY_PKG_LOCK_NAME=pacman
+  default_lock=/var/lib/pacman/db.lck
+  ;;
+deb)
+  OMARCHY_PKG_LOCK_NAME=apt
+  default_lock=/var/lib/dpkg/lock-frontend
+  ;;
+esac
+
+OMARCHY_PKG_LOCK="${OMARCHY_PKG_LOCK:-$default_lock}"
+
+wait_for_package_transaction
 
 mkdir -p "$STATE_DIR"
 [[ -d $MIGRATIONS_DIR ]] || exit 0
@@ -89,8 +169,14 @@ while IFS=$'\t' read -r name file marker <&3; do
   [[ -n $name ]] || continue
 
   if [[ ! -f $marker ]]; then
-    echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
-    OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file" 3<&-
+    # A migration marked for the other platform is marked done rather than
+    # skipped for good. Leaving it unmarked would have every login re-read it
+    # and re-decide, which is the cost the marker exists to avoid.
+    if migration_runs_here "$file"; then
+      echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
+      OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file" 3<&-
+    fi
+
     mkdir -p "$(dirname "$marker")"
     touch "$marker"
   fi

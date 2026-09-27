@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Switch mise to the mise-bin package from the Omarchy repo"
 
 # mise-bin carries mise's own release artifacts -- PGO+BOLT-optimized on x86_64,

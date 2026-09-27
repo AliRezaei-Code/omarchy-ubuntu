@@ -4,6 +4,12 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# The snapper packaging contract has no deb equivalent: the scripts and
+# snapshot configuration it reads are Arch packaging internals. On Ubuntu the
+# same invariant is checked against packaging/ubuntu/deb/omarchy.manifest by
+# unowned-system-paths-test.sh.
+require_backend arch "the Snapper packaging contract"
+
 template="$ROOT/default/snapper/root"
 limine_defaults="$ROOT/etc/limine-entry-tool.d/omarchy-defaults.conf"
 limine_notify_autostart="$ROOT/config/autostart/limine-snapper-notify.desktop"

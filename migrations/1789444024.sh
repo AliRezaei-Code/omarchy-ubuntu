@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Install missing headers for the Omarchy or T2 kernel"
 
 # Fresh ISO installs mark earlier migrations complete, so the kernel migration

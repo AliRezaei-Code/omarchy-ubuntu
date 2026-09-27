@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Disable Limine Snapper warning notifier"
 
 autostart_file="$HOME/.config/autostart/limine-snapper-notify.desktop"

@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Install the Omarchy kernel and make it the first Limine boot entry"
 
 # linux-omarchy is an x86_64 kernel. T2 Macs must keep their specialized kernel,

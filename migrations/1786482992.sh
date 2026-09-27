@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Rebuild the boot image when it predates the Limine kernel command line"
 
 # 1784917531 gated its rebuild on initramfs_async=0 being present in the Limine

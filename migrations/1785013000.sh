@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Move zram tuning to a vendor drop-in"
 
 zram_conf="${OMARCHY_ZRAM_CONF:-/etc/systemd/zram-generator.conf}"

@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# omarchy:summary=Print the paths the Omarchy deb owns, one per line.
+# omarchy:hidden=true
+
+# The list of installed paths is the contract between three things that must
+# not disagree: what the deb stages, what `default/bash/env-bootstrap` tells
+# the session to look for, and what the tests that prove every system path
+# Omarchy writes is owned by a package check against. Writing the list down in
+# three places is how they drift, so it is derived here from one place and the
+# deb builder stages from this too.
+#
+# The layout is not a guess. It is the contract `default/bash/env-bootstrap`
+# already states: the tree at /usr/share/omarchy, the binaries as
+# /usr/bin/omarchy-*. What this adds is the enumeration, so the deb and the
+# tests agree on which files those words cover.
+
+set -euo pipefail
+
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+OMARCHY_PATH=${OMARCHY_PATH%/}
+
+# Directories the deb copies wholesale under the tree root. Listed in the order
+# they should appear in the manifest, so regenerating it is a stable diff.
+TREE_DIRS=(bin config default install manual migrations shell themes)
+
+# Individually mapped files, and where they land.
+emit() {
+  printf '/%s\n' "$1"
+}
+
+paths() {
+  local directory
+
+  # Files a script or migration writes into a directory a package owns. The
+  # Arch build ships them from a PKGBUILD; the deb has to say so explicitly,
+  # which is the whole point of the manifest: a path that is written but not
+  # declared is exactly what the ownership check is looking for.
+  emit "usr/share/owe/10-owe-sync"
+
+  emit "etc/profile.d/omarchy.sh"
+  emit "usr/share/omarchy/version"
+
+  for directory in "${TREE_DIRS[@]}"; do
+    [[ -d $OMARCHY_PATH/$directory ]] || continue
+
+    find "$OMARCHY_PATH/$directory" -type f -o -type l |
+      sed "s|^$OMARCHY_PATH/||" |
+      sort |
+      while IFS= read -r relative; do
+        printf '/usr/share/omarchy/%s\n' "$relative"
+      done
+  done
+
+  # The binaries the packaged contract promises on PATH. omarchy itself is a
+  # router, not a symlink: bin/omarchy-* are the real commands.
+  find "$OMARCHY_PATH/bin" -maxdepth 1 -type f -name 'omarchy-*' -printf '/usr/bin/%f\n' 2>/dev/null | sort
+  emit "usr/bin/omarchy"
+}
+
+paths | sort -u

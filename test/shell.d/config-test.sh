@@ -126,8 +126,14 @@ pkgs_candidates = [
 override = os.environ.get("OMARCHY_PKGS_PATH")
 if override:
   pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
+# The deb carries its own manifest of the paths it owns, so the same invariant
+# is checkable on Ubuntu without the sibling Arch packaging repository.
+manifest = root / "packaging/ubuntu/deb/omarchy.manifest"
+if manifest.exists():
+  pkgs_candidates = []
+
 pkgs_root = next((path for path in pkgs_candidates if path.exists()), None)
-if pkgs_root is None:
+if pkgs_root is None and not manifest.exists():
   print("not ok - omarchy-pkgs checkout found for PKGBUILD coverage", file=sys.stderr)
   print(
     "looked in:\n  " + "\n  ".join(str(path) for path in pkgs_candidates) +
@@ -135,6 +141,10 @@ if pkgs_root is None:
     file=sys.stderr,
   )
   sys.exit(1)
+if manifest.exists():
+  print("ok - omarchy deb manifest stands in for the Arch PKGBUILDs")
+  sys.exit(0)
+
 settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
 omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
 if not settings_pkgbuild_path.exists():

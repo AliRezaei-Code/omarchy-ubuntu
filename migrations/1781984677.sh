@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Normalize Snapper snapshot services"
 
 OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"

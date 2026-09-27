@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Point rc-channel installs at the rc package repository"
 
 # pacman-rc.conf shipped with [omarchy] pointing at the edge repository, a

@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Rebuild the initramfs so NVIDIA-only systems shed nouveau's unused GSP firmware"
 
 # omarchy_hooks.conf now filters the kms hook out of HOOKS when the proprietary

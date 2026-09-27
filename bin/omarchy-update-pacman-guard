@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+# The ALPM hook this guards is Arch's. On Ubuntu pacman is not there to
+# run it, so a hand invocation is the only way to get here, and
+# the only thing worth saying is which system it belongs to.
+omarchy-requires-arch "the ALPM package hook" && exit 1
+
 if [[ ${OMARCHY_UPDATE_PACMAN:-} == "1" || ${OMARCHY_ALLOW_DIRECT_PACMAN:-} == "1" ]]; then
   exit 0
 fi

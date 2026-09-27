@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Omarchy dashboard as a graphical window
+# omarchy:args=[--route=<id>]
+
+# One of the two dashboard front ends. It renders `omarchy menu snapshot` in a
+# GTK4/libadwaita window; bin/omarchy-dashboard-tui renders the same JSON in a
+# terminal. Neither decides what the menu contains, so they cannot disagree.
+#
+# The app is a GJS module, not a compiled binary, so "is it available here" is
+# a real question rather than a file test: a box can have the interpreter and
+# not the libadwaita typelib, and a wrapper that only looked for gjs would exec
+# into a JavaScript ImportError instead of refusing. --available answers that
+# question without opening a window, because `omarchy dashboard` calls it to
+# choose between this and the TUI and must not flash a window to find out.
+#
+# The refusal below is the whole fallback mechanism: omarchy-dashboard execs the
+# TUI whenever this exits nonzero, so a user on a box without GTK gets a working
+# menu rather than an error.
+
+UNAVAILABLE='omarchy-dashboard-app: the graphical dashboard is unavailable on this system'
+
+# A typelib the GTK app imports, by name. libadwaita is the one that is
+# genuinely optional on Ubuntu -- gjs and GTK 4 are usually present on any
+# desktop -- and it is the one whose absence has no workaround.
+required_typeli=(Adw-1 Gtk-4.0)
+
+typelib_found() {
+  local name=$1 dir
+  local -a dirs=()
+  [[ -n ${GI_TYPELIB_PATH:-} ]] && IFS=: read -ra dirs <<<"$GI_TYPELIB_PATH"
+  if [[ -n ${XDG_DATA_DIRS:-} ]]; then
+    local xdg
+    IFS=: read -ra xdg <<<"$XDG_DATA_DIRS"
+    for dir in "${xdg[@]}"; do
+      dirs+=("$dir/girepository-1.0")
+    done
+  fi
+  dirs+=(/usr/lib/girepository-1.0 /usr/share/girepository-1.0)
+  for dir in /usr/lib/*/girepository-1.0; do
+    dirs+=("$dir")
+  done
+
+  for dir in "${dirs[@]}"; do
+    [[ -n $dir && -r "$dir/$name.typelib" ]] && return 0
+  done
+
+  return 1
+}
+
+# The one check that cannot be faked by a file test: gjs actually resolving the
+# typelibs through the same search path it will use to start the app. A shell
+# that lists the directories above can be wrong about which one wins, and this
+# cannot.
+gjs_can_load() {
+  local probe='imports.gi.versions.Gtk = "4.0"; imports.gi.versions.Adw = "1"; const { Adw, Gtk } = imports.gi; void Adw; void Gtk;'
+  gjs -c "$probe" >/dev/null 2>&1
+}
+
+available() {
+  # Resolved next to this script: the shell tests invoke commands by absolute
+  # path, and bin/ is not on PATH there.
+  "${BASH_SOURCE[0]%/*}/omarchy-cmd-present" gjs || return 1
+  [[ -r $app_source ]] || return 1
+
+  local name
+  for name in "${required_typeli[@]}"; do
+    typelib_found "$name" || return 1
+  done
+
+  gjs_can_load || return 1
+  return 0
+}
+
+# Resolved next to this script rather than under OMARCHY_PATH, so a checkout
+# runs the checkout's app and an installed tree runs its own.
+#
+# Resolved with bash parameter expansion rather than dirname(1): this script
+# has to be able to answer --available on a machine with nothing on PATH but
+# what it needs, and dirname is something it does not need.
+script_dir=${BASH_SOURCE[0]%/*}
+[[ $script_dir == "${BASH_SOURCE[0]}" ]] && script_dir=.
+bin_dir=$(cd -- "$script_dir" && pwd)
+app_source="$bin_dir/../app/omarchy-dashboard/omarchy-dashboard.js"
+omarchy_path=$(cd -- "$bin_dir/.." && pwd)
+
+if [[ ${1:-} == --available ]]; then
+  if available; then
+    exit 0
+  fi
+  exit 1
+fi
+
+if ! available; then
+  echo "$UNAVAILABLE" >&2
+  exit 1
+fi
+
+# The same contract bin/omarchy-dashboard and bin/omarchy-dashboard-tui set: the
+# tree this app reads is the tree it was launched from, and every omarchy-*
+# command it runs afterwards has bin/ on PATH.
+export OMARCHY_PATH="$omarchy_path"
+export PATH="$omarchy_path/bin:$PATH"
+
+exec gjs -m "$app_source" "$@"

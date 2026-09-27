@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Drop Kvantum now that Qt apps follow the theme through the GTK platform theme"
 
 # QT_STYLE_OVERRIDE is gone, so Kvantum is no longer painting anything -- Qt
