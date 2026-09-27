@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# omarchy:summary=Regenerate the Ubuntu package list from the Arch one.
+# omarchy:hidden=true
+
+# install/omarchy-base.packages is the authoritative list of what Omarchy
+# needs; install/omarchy-deb.packages is what the deb depends on. Hand-editing
+# the second means the two describe different machines within one release, so
+# it is generated: every Arch name goes through install/pkg-map.conf, and a
+# name the map declares unsupported is listed at the bottom rather than
+# dropped, because "this system has no equivalent" is information a reader of
+# the list needs.
+#
+# Nothing in the tree installs from this file at runtime. It is the deb's
+# dependency list, so regenerating it only matters when the Arch list or the
+# map changes.
+
+set -euo pipefail
+
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+SOURCE="$OMARCHY_PATH/install/omarchy-base.packages"
+TARGET="$OMARCHY_PATH/install/omarchy-deb.packages"
+
+[[ -r $SOURCE ]] || {
+  echo "omarchy-deb-packages: $SOURCE is not readable" >&2
+  exit 1
+}
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-map"
+
+total=0
+resolved=()
+unsupported=()
+
+while IFS= read -r name; do
+  [[ -n $name ]] || continue
+  (( total += 1 ))
+
+  if translated=$(omarchy_pkg_map_translate "$name"); then
+    read -r -a packages <<<"$translated"
+    resolved+=("${packages[@]}")
+  else
+    unsupported+=("$name")
+  fi
+done < <(grep -vE '^[[:space:]]*(#|$)' "$SOURCE")
+
+# Sort and drop duplicates: three Arch packages can map to one Debian one, and
+# a Depends line that names it three times is wrong, not merely untidy.
+if (( ${#resolved[@]} > 0 )); then
+  mapfile -t resolved < <(printf '%s\n' "${resolved[@]}" | sort -u)
+fi
+
+if (( ${#unsupported[@]} > 0 )); then
+  mapfile -t unsupported < <(printf '%s\n' "${unsupported[@]}" | sort -u)
+fi
+
+{
+  cat <<HEADER
+# The Ubuntu package list, generated from install/omarchy-base.packages
+# through install/pkg-map.conf by omarchy-deb-packages. Do not edit it by hand:
+# the Arch list stays authoritative for Arch, and this file is what the deb
+# depends on.
+#
+# Generated from $total Arch packages; ${#unsupported[@]} of them have no Ubuntu
+# equivalent and are listed at the bottom as declared-unsupported rather than
+# silently dropped.
+HEADER
+
+  (( ${#resolved[@]} == 0 )) || printf '%s\n' "${resolved[@]}"
+
+  if (( ${#unsupported[@]} > 0 )); then
+    printf '\n# --- no Ubuntu equivalent (declared in install/pkg-map.conf) ---\n'
+    printf '%s\n' "${unsupported[@]}"
+  fi
+} >"$TARGET"
+
+echo "omarchy-deb-packages: wrote ${#resolved[@]} Ubuntu packages ($total Arch packages, ${#unsupported[@]} unsupported)"
