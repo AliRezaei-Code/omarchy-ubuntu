@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+TryExec=omarchy-dashboard-app
+Exec=omarchy-dashboard-app
+Icon=omarchy-dashboard
+Terminal=false
+Categories=System;
+Name=Omarchy
+GenericName=Dashboard
+Comment=Open the Omarchy menu as a graphical dashboard
+StartupNotify=true
+StartupWMClass=org.omarchy.Dashboard
