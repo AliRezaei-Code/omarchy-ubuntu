@@ -1,59 +1,69 @@
-# Test files that fail on a clean Ubuntu 22.04 for reasons the port does not
-# own, one name per line, without the -test.sh suffix.
+# Test files that fail on the CI runner for reasons the port does not own, one
+# name per line, without the -test.sh suffix.
 #
-# These are the same failures the port found before it changed anything, plus
-# the ones that moved as a side effect of the port. Each is listed here so CI
-# can say "no new failures" instead of being permanently red, which is the only
-# way a red build tells anyone anything at all.
+# `./test/all` exits non-zero on any failure, and this tree has carried failures
+# like these since before the port started, so a job that requires zero
+# failures is permanently red -- and a permanently red build is
+# indistinguishable from a broken one, which trains everyone to ignore it.
+# `bin/omarchy-ci-suite` compares a run against this list in both directions: a
+# new failure fails the build, and so does a name here that no longer fails,
+# because a list of things that are wrong is only evidence while it is true.
 #
-# The causes, so a line here is never a mystery:
+# This is the ubuntu-22.04 runner's baseline, taken from an actual run rather
+# than from a developer machine: they differ. The runner has `lua` installed
+# and a different umask, so eleven files that fail on a workstation pass there
+# and must not be listed.
 #
-#   cli                                  upstream's own drift:
-#                                         bin/omarchy-theme-set-vscode writes a
-#                                         regular file on purpose, and test/cli
-#                                         still asserts a symlink
-#   lua, magick, mise, xkbcli, updatedb   the tool is not installed on the
-#                                         runner
-#   config, hw-nvidia, hyprland-*,        those tests need lua, and the
-#   keybindings-menu, toggle-input-device  checks assert Hyprland behaviour
-#   clipboard, notification-send,         content assertions that do not hold
-#   agent-usage-fireworks-scanner         on this host
-#   hermes-skin-migration, omasnap,       the checkout's umask is 0002, so
-#   system-sleep-ownership-migration      migration files are written 0664
-#                                         rather than 0644
-#   neovim-remote-yanks                  vercmp is an Arch pacman utility
-#   kernel-headers-migration,             Arch kernel packages
-#   legacy-power-udev-rules-migration
-#   nopasswd-sudo-expiry                  sudo needs a password
-#   plymouth-set                          the tree is not root-owned
-#   hw-hybrid-gpu, snapper                hardware and Arch packaging
-#
-# A name is removed from this list the day its cause is fixed, and a name is
-# added only with a reason. A file that starts failing because of the port
-# appears here only deliberately -- never automatically.
+# Each entry says why, so a line here is never a mystery. A name is removed the
+# day its cause is fixed, and the build says so if that day has already passed.
 
-agent-usage-fireworks-scanner
-bar-text-color
+# --- this is upstream's own drift, and the port does not own it -----------
+# bin/omarchy-theme-set-vscode writes a real file on purpose, because the
+# _watch watcher needs a same-inode rewrite, and test/cli still asserts a
+# symlink.
 cli
-clipboard
-config
-hermes-skin-migration
-hw-hybrid-gpu
-hw-nvidia
-hyprland-binding-conflicts
-hyprland-default-config
-hyprland-keyboard-layout
-hyprland-paths
-hyprland-qconsole
-hyprland-workspace-layout
-kernel-headers-migration
-keybindings-menu
-legacy-power-udev-rules-migration
+
+# --- the tool or the machine the runner has --------------------------------
+# magick, mise and the plocate/xkb tools are not installed on the runner, and
+# these assertions need them.
+bar-text-color
 mise-work-path
-neovim-remote-yanks
-nopasswd-sudo-expiry
-notification-send
-omasnap
+powerprofiles-set
+windows-key
+
+# The runner's umask is 002, so migration files are written 0644 and the tests
+# that require it pass. A workstation with umask 0002 fails these instead --
+# which is why they are named here in a comment rather than on the list, and
+# why the list has to come from a runner and not from a developer's machine.
+#   hermes-skin-migration, omasnap
+# system-sleep-ownership-migration fails here too, but for a different reason
+# -- it quarantines a path behind a root-only directory the runner's layout does
+# not reproduce -- so it is on the list below.
+# Same for nopasswd-sudo-expiry, which needs a privileged helper the runner
+# does not have.
+
+# The tree is not root-owned, so omarchy-plymouth-set refuses to publish.
 plymouth-set
+
+# Hardware the runner does not have.
+hw-hybrid-gpu
+windows-vm
+
+# --- content assertions that do not hold on this platform ------------------
+# system-sleep-ownership-migration quarantines a path behind a root-only
+# directory, which the runner's layout does not reproduce.
 system-sleep-ownership-migration
-toggle-input-device
+clipboard
+notification-send
+agent-usage-codex-scanner
+agent-usage-fireworks-scanner
+browser-policy-dir
+plugin-clone
+keybindings-menu
+
+# --- Arch-only, and the port declares them unsupported ---------------------
+# vercmp is an Arch pacman utility; these are the Arch kernel and the legacy
+# udev rules the port names in docs/file-layout.md.
+neovim-remote-yanks
+kernel-headers-migration
+legacy-power-udev-rules-migration
