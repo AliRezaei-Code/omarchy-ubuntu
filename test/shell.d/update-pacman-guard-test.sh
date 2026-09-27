@@ -4,6 +4,8 @@ set -euo pipefail
 
 source "$(dirname "$0")/base-test.sh"
 
+require_backend arch "the ALPM package hook"
+
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 

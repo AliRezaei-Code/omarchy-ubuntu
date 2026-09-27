@@ -2,6 +2,12 @@
 
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
+# The omarchy-settings packaging scriptlet has no deb equivalent: the scripts and
+# snapshot configuration it reads are Arch packaging internals. On Ubuntu the
+# same invariant is checked against packaging/ubuntu/deb/omarchy.manifest by
+# unowned-system-paths-test.sh.
+require_backend arch "the omarchy-settings packaging scriptlet"
 source "$SHELL_TEST_DIR/fixtures/passwordless-sudo-test.sh"
 
 quarantine="$test_tmp/var/lib/omarchy/sudoers-quarantine"
