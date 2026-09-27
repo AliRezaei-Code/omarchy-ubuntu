@@ -1,0 +1,63 @@
+#!/bin/bash
+# postinst for the Omarchy deb.
+#
+# Two jobs, both small on purpose. Nothing here rewrites a bootloader, restarts
+# a service, or chowns a tree: a package install is not the place to surprise
+# someone, and the first thing a new user does is look at what just happened.
+
+set -euo pipefail
+
+# Debian renames two binaries because the originals collide with something
+# else, and 126 files in the tree call them by the Arch name. A symlink per user
+# is the least surprising place to put that: it is reversible, it is visible in
+# the user's own bin, and it does not put a file in /usr that dpkg does not
+# know about.
+link_binary() {
+  local from="$1" to="$2" user_home="$3"
+
+  [[ -x $from ]] || return 0
+
+  if [[ -e $to || -L $to ]]; then
+    printf '  %s already exists; leaving it alone.\n' "$to"
+    return 0
+  fi
+
+  ln -sf "$from" "$to"
+  printf '  %s -> %s\n' "$to" "$from"
+}
+
+echo "Omarchy is installed."
+
+# The first user to log in gets the shims, so a plain install has them and a
+# system with several users does not litter /usr/local/bin for all of them.
+first_home=""
+for home in /home/*; do
+  [[ -d $home ]] || continue
+  first_home="$home"
+  break
+done
+
+if [[ -n $first_home ]]; then
+  mkdir -p "$first_home/.local/bin"
+  echo "Linking the renamed binaries for $(basename "$first_home"):"
+  link_binary /usr/bin/fdfind "$first_home/.local/bin/fd" "$first_home"
+  link_binary /usr/bin/batcat "$first_home/.local/bin/bat" "$first_home"
+  chown -R --reference="$first_home/.local" "$first_home/.local/bin" 2>/dev/null || true
+else
+  echo "No home directory yet; run these once you have one:"
+  echo "  ln -s /usr/bin/fdfind ~/.local/bin/fd"
+  echo "  ln -s /usr/bin/batcat ~/.local/bin/bat"
+fi
+
+cat <<'MESSAGE'
+
+Next, from a login shell:
+
+  omarchy-refresh-config        copy the default configuration to ~/.config
+  omarchy-refresh-applications  install the launchers, including Omarchy's dashboard
+
+Then open the dashboard with `omarchy dashboard`, or `omarchy` to see everything.
+
+MESSAGE
+
+exit 0

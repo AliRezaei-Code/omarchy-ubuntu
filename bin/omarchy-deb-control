@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# omarchy:summary=Print the Debian control file for the Omarchy package.
+# omarchy:hidden=true
+
+# The control file is generated rather than written because two of its fields
+# are generated: the version, which follows the version file and the commit it
+# was built from, and the dependency list, which is the Ubuntu package list
+# expanded from the Arch one through the name map. Both are already files in
+# the tree; a hand-maintained control file is a third copy that will not
+# follow them.
+
+set -euo pipefail
+
+root="${1:?usage: omarchy-deb-control <root> <version> [arch]}"
+version="$2"
+arch="${3:-all}"
+
+# The runtimes both front ends need and that are not Omarchy packages: the
+# terminal UI and the GTK dashboard are Node and GJS, and neither is something
+# install/pkg-map.conf can express because they are not Arch package names.
+runtime_depends="nodejs,gjs,gir1.2-adw-1,fzf,jq"
+
+# Comma-separated, because that is what the Debian control format's grammar
+# is: dpkg-deb rejects a space-separated list outright, and a build that fails
+# on its own output is worse than a slow one.
+#
+# The trailing comma before the runtimes is what joins the two lists without a
+# conditional, and a doubled comma is legal here.
+# The declared-unsupported names are stripped first, while their heading is
+# still a comment: filtering comments out before the cut would leave nothing
+# for the cut to match and the whole unsupported list would land in Depends,
+# where a package that does not exist makes the deb uninstallable.
+depends=$(sed '/^# --- no Ubuntu equivalent/,$d' "$root/install/omarchy-deb.packages" |
+  grep -vE '^[[:space:]]*(#|$)' |
+  paste -sd, -)
+
+cat <<CONTROL
+Package: omarchy
+Version: $version
+Architecture: $arch
+Maintainer: AliRezaei <ali.rezaei@ryerson.ca>
+Homepage: https://github.com/AliRezaei-Code/omarchy-ubuntu
+Section: admin
+Priority: optional
+Depends: $depends,$runtime_depends
+Description: Omarchy on Ubuntu
+ The whole Omarchy command surface, its menu as a graphical dashboard and as a
+ full-screen terminal UI, and 'omarchy update'. The Arch-only surfaces are
+ named rather than silently broken: see manual/49-omarchy-on.md.
+CONTROL
