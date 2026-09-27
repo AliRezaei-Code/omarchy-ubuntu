@@ -36,8 +36,8 @@ jobs:
           sudo apt-get update -qq
           echo 'Etc/UTC' | sudo tee /etc/timezone >/dev/null
           sudo apt-get install -y --no-install-recommends \
-            jq python3 lua5.4 imagemagick ffmpeg util-linux \
-            desktop-file-utils fontconfig file
+            jq python3 lua5.4 imagemagick ffmpeg util-linux plocate \
+            desktop-file-utils fontconfig file gcc x11-xkb-utils
 
       - name: Report which checks will be skipped
         run: |
@@ -45,8 +45,24 @@ jobs:
             command -v "$tool" >/dev/null || echo "not present, some checks will skip: $tool"
           done
 
+      # Not `./test/all` directly. This tree carried a couple of dozen
+      # environment-caused failures before the port started, so a job that
+      # requires zero failures is permanently red, and a permanently red build
+      # is indistinguishable from a broken one. This asserts that nothing that
+      # used to pass has stopped passing -- and, in the other direction, that
+      # nothing on the known-failures list has quietly started passing, because
+      # a stale list stops meaning anything.
       - name: Run the suite
-        run: ./test/all
+        run: ./bin/omarchy-ci-suite
+        env:
+          OMARCHY_CI_LOG: ${{ runner.temp }}/suite.log
+
+      - name: Keep the log when a check fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-log
+          path: ${{ runner.temp }}/suite.log
 
       # The deb is the deliverable, so the suite passing is not enough: the
       # artefact has to build, and it has to be a package dpkg accepts.

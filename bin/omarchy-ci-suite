@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# omarchy:summary=Run the test suite and fail only on new failures.
+# omarchy:hidden=true
+
+# `./test/all` exits non-zero on any failure, and this tree has carried a
+# couple of dozen environment-caused ones since before the port started. A CI
+# job that runs it directly is therefore permanently red, and a permanently
+# red build is indistinguishable from a broken one -- which is worse than no
+# build at all, because it trains everyone to ignore it.
+#
+# So the signal is "did anything that used to pass stop passing", not "is
+# everything green". The known failures are listed in
+# packaging/ubuntu/ci-known-failures.txt with a reason for each, and this
+# compares the run against that list in both directions: a new failure fails
+# the build, and a known failure that has been *fixed* also fails it, because
+# leaving a name on a list of things that are wrong is how the list stops
+# meaning anything.
+
+set -uo pipefail
+
+root="${1:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
+known="$root/packaging/ubuntu/ci-known-failures.txt"
+log="${OMARCHY_CI_LOG:-$(mktemp)}"
+
+if [[ ! -r $known ]]; then
+  echo "omarchy-ci-suite: $known is missing; a build cannot say what is new" >&2
+  exit 2
+fi
+
+"$root/test/all" >"$log" 2>&1
+suite_status=$?
+
+# The runner prints `==> <path>` before each file and `not ok - <name>` on
+# failure, so a failing file is the one the last `not ok` belongs to.
+mapfile -t failed < <(
+  awk '/^==> /{ file = $2 }
+       /^not ok - /{
+         sub(/^test\/shell\.d\//, "", file)
+         sub(/-test\.sh$/, "", file)
+         sub(/^test\//, "", file)
+         print file
+       }' "$log" |
+    sort -u
+)
+
+mapfile -t expected < <(grep -vE '^[[:space:]]*(#|$)' "$known" | sort -u)
+
+new=$(comm -23 <(printf '%s\n' "${failed[@]:-}") <(printf '%s\n' "${expected[@]:-}") | grep -v '^$')
+fixed=$(comm -13 <(printf '%s\n' "${failed[@]:-}") <(printf '%s\n' "${expected[@]:-}") | grep -v '^$')
+
+printf 'suite: %d checks passed, %d files failed\n' \
+  "$(grep -c '^ok - ' "$log")" "${#failed[@]}"
+
+if [[ -n $fixed ]]; then
+  echo
+  echo "These no longer fail and should come off the known-failures list:"
+  printf '  %s\n' $fixed
+fi
+
+if [[ -n $new ]]; then
+  echo
+  echo "These are new failures:" >&2
+  printf '  %s\n' $new >&2
+  echo >&2
+  echo "Full output: $log" >&2
+  exit 1
+fi
+
+if [[ -n $fixed ]]; then
+  # Also a build failure. A known-failures list that keeps names which no
+  # longer fail is a list that has stopped being evidence, and the next person
+  # to read it concludes the suite is in an unknown state.
+  echo
+  echo "The known-failures list is stale; remove the names above." >&2
+  exit 1
+fi
+
+echo "no new failures"
+
+# The suite's own exit status is reported but not decisive: a green run that
+# left the list stale is still a build to fix, and a red run whose failures are
+# all known has already been accounted for above.
+exit 0
