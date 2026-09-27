@@ -9,7 +9,15 @@ if [[ ${OMARCHY_SUDO_NO_UPDATE:-0} == "1" ]]; then
   sudo_options=(--sudo "$sudo_wrapper" --sudoloop=false)
 fi
 
-if pacman -Qem >/dev/null; then
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+backend=$(omarchy_pkg_backend) || exit $?
+
+if [[ $backend != "arch" ]]; then
+  echo "The AUR is only available on Arch-based Omarchy" >&2
+  exit 0
+fi
+
+if omarchy_pkg_query "$backend"; then
   if omarchy-pkg-aur-accessible; then
     echo -e "\e[32m\nUpdate AUR packages\e[0m"
     yay "${sudo_options[@]}" -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs || exit 1

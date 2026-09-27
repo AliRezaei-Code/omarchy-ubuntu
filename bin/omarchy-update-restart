@@ -9,6 +9,9 @@ case "$mode" in
   *) echo "Unknown restart phase: $mode" >&2; exit 2 ;;
 esac
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+backend=$(omarchy_pkg_backend) || exit $?
+
 echo
 confirm_reboot() {
   if [[ ${OMARCHY_UPDATE_UNATTENDED:-0} == "1" ]]; then
@@ -24,7 +27,7 @@ if [[ $mode != "--services-only" ]]; then
   kernel_updated=true
 
   for kernel in /usr/lib/modules/*/vmlinuz; do
-    if [[ -f $kernel ]] && pacman -Qo "$kernel" &>/dev/null; then
+    if [[ -f $kernel ]] && omarchy_pkg_owns "$backend" "$kernel"; then
       installed_kernel=$(basename "$(dirname "$kernel")")
 
       if [[ $installed_kernel == $running_kernel ]]; then
