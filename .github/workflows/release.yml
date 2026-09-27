@@ -1,0 +1,40 @@
+name: Release
+
+# A tag is a release because the version in it is the version the deb carries:
+# the build takes the number from the version file, not from the tag, so a tag
+# that disagrees with the tree is a mistake worth seeing rather than a silent
+# override.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish the deb
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the deb
+        run: make deb
+
+      - name: Say what is being published
+        run: |
+          deb=$(ls build/deb/*.deb)
+          echo "### $deb" >> "$GITHUB_STEP_SUMMARY"
+          dpkg-deb --info "$deb" | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+
+      # Pinned to a commit rather than a tag: a tag can be moved, and a release
+      # pipeline that runs whatever a tag points at today is a pipeline whose
+      # contents nobody can reconstruct later.
+      - name: Publish the release
+        uses: softprops/action-gh-release@a4f117a9dd5572319a486154ec1147aebabd285c # v2.2.2
+        with:
+          files: build/deb/*.deb
+          generate_release_notes: true
+          draft: false

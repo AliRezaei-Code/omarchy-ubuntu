@@ -58,6 +58,7 @@
 /usr/bin/omarchy-dashboard
 /usr/bin/omarchy-dashboard-app
 /usr/bin/omarchy-dashboard-tui
+/usr/bin/omarchy-deb-control
 /usr/bin/omarchy-deb-manifest
 /usr/bin/omarchy-deb-packages
 /usr/bin/omarchy-debug
@@ -473,6 +474,9 @@
 /usr/bin/omarchy-webapp-remove-all
 /usr/bin/omarchy-windows-key
 /usr/bin/omarchy-windows-vm
+/usr/local/bin/gum
+/usr/share/fonts/omarchy/omarchy.ttf
+/usr/share/icons/hicolor/scalable/apps/omarchy-dashboard.svg
 /usr/share/omarchy/bin/omarchy
 /usr/share/omarchy/bin/omarchy-agent
 /usr/share/omarchy/bin/omarchy-agent-crash
@@ -532,6 +536,7 @@
 /usr/share/omarchy/bin/omarchy-dashboard
 /usr/share/omarchy/bin/omarchy-dashboard-app
 /usr/share/omarchy/bin/omarchy-dashboard-tui
+/usr/share/omarchy/bin/omarchy-deb-control
 /usr/share/omarchy/bin/omarchy-deb-manifest
 /usr/share/omarchy/bin/omarchy-deb-packages
 /usr/share/omarchy/bin/omarchy-debug
@@ -1181,6 +1186,8 @@
 /usr/share/omarchy/default/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf
 /usr/share/omarchy/default/xcompose
 /usr/share/omarchy/default/xdg-terminal-exec/hyprland-xdg-terminals.list
+/usr/share/omarchy/icon.png
+/usr/share/omarchy/icon.txt
 /usr/share/omarchy/install/config/all.sh
 /usr/share/omarchy/install/config/browser-policy.sh
 /usr/share/omarchy/install/config/docker.sh
@@ -1268,6 +1275,8 @@
 /usr/share/omarchy/install/user/mise-work.sh
 /usr/share/omarchy/install/user/theme.sh
 /usr/share/omarchy/install/user/xcompose.sh
+/usr/share/omarchy/logo.svg
+/usr/share/omarchy/logo.txt
 /usr/share/omarchy/manual/01-welcome-to-omarchy.md
 /usr/share/omarchy/manual/02-getting-started.md
 /usr/share/omarchy/manual/03-coming-from-mac-or-windows.md

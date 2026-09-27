@@ -37,9 +37,15 @@ fi
 export OMARCHY_PATH="$omarchy_path"
 export PATH="$omarchy_path/bin:$PATH"
 
-# The front end is resolved next to this script rather than under
-# OMARCHY_PATH, so a checkout runs the checkout's TUI and an installed tree
-# runs its own. OMARCHY_PATH still decides which `omarchy` answers the menu.
-front_end="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../shell/plugins/menu/DashboardTui.js"
+# OMARCHY_PATH first, then the tree next to this script. A packaged install
+# runs this from /usr/bin with no tree above it, so "next to me" alone finds
+# nothing -- and a checkout has no OMARCHY_PATH pointing at itself unless the
+# caller set one. A checkout therefore has to work the second way round, which
+# is the order these are tried in.
+if [[ -r "$omarchy_path/shell/plugins/menu/DashboardTui.js" ]]; then
+  dashboardtui_path="$omarchy_path/shell/plugins/menu/DashboardTui.js"
+else
+  dashboardtui_path="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../shell/plugins/menu/DashboardTui.js"
+fi
 
-exec "$node_bin" "$front_end" "$@"
+exec "$node_bin" "$dashboardtui_path" "$@"

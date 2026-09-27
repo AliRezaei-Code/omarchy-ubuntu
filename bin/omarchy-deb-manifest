@@ -38,8 +38,34 @@ paths() {
   # declared is exactly what the ownership check is looking for.
   emit "usr/share/owe/10-owe-sync"
 
+  # Outside the tree, and each one there for a reason rather than by habit.
+  #
+  # gum is a substitute 42 files call and jammy has no package for it.
+  # /usr/local/bin is ahead of /usr/bin on a stock install and is not
+  # dpkg-owned, which is what makes it a substitute rather than a renamed
+  # package.
+  emit "usr/local/bin/gum"
+
+  # The font the menu's icon glyphs are drawn with. Without it a packaged
+  # install is the only kind that shows them, and app/omarchy-dashboard has to
+  # drop them for anyone running from a checkout.
+  emit "usr/share/fonts/omarchy/omarchy.ttf"
+
+  # The dashboard's app-grid icon.
+  emit "usr/share/icons/hicolor/scalable/apps/omarchy-dashboard.svg"
+
   emit "etc/profile.d/omarchy.sh"
   emit "usr/share/omarchy/version"
+
+  # The branding files at the tree root, which docs/file-layout.md already says
+  # install here. default/chromium/extensions/copy-url/icon.png is a relative
+  # symlink to ../../../../icon.png, so without this the package installs a
+  # link that dangles -- and a dangling link in a package is a defect nobody
+  # notices until a browser extension goes blank.
+  local branding
+  for branding in icon.png icon.txt logo.svg logo.txt; do
+    [[ -e $OMARCHY_PATH/$branding ]] && emit "usr/share/omarchy/$branding"
+  done
 
   for directory in "${TREE_DIRS[@]}"; do
     [[ -d $OMARCHY_PATH/$directory ]] || continue
