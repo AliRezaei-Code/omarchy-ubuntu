@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Unpack the initramfs synchronously so Plymouth survives early boot"
 
 # Kernel 7.1 unpacks the initramfs asynchronously, which races /init: the

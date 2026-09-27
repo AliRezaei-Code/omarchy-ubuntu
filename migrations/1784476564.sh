@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Keep non-Latin keyboard layouts out of the initramfs so the LUKS passphrase stays typeable"
 
 # Bundling vconsole.conf in the initramfs makes Plymouth apply the user's

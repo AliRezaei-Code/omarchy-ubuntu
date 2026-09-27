@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Switch back to the packaged quickshell now that 0.3.1 kills synchronously"
 
 # 0.3.1 fixes `kill` returning before the instance has exited, which is the only

@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Drop the default input group grant, which allowed unprivileged keylogging"
 
 # Membership of `input` gives raw read/write access to /dev/input/event*: any

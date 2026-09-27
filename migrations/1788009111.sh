@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Temporarily remove automatic printer discovery"
 
 machine_marker="${OMARCHY_CUPS_BROWSED_REMOVAL_MARKER:-/var/lib/omarchy/migrations/1788009111}"

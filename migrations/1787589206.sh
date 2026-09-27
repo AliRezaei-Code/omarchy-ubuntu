@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Require signed packages from the Omarchy repository"
 
 # The [omarchy] repo predates the Omarchy packaging key, so existing installs

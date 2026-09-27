@@ -1,3 +1,4 @@
+# omarchy:platform=arch
 echo "Only check for pending migrations at login, not on every package update"
 
 # omarchy-update-user-notify.path watched /usr/share/omarchy/migrations, but
