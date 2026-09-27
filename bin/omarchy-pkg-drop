@@ -5,9 +5,16 @@
 # omarchy:requires-sudo=true
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-map"
 
 backend=$(omarchy_pkg_backend) || exit $?
 
+
+omarchy_pkg_map_resolve "$backend" "$@" || true
+set -- "${OMARCHY_PKG_MAP_RESOLVED[@]}"
+
+# The autoremove decision below counts the packages the caller named, so the
+# count has to be of the translated list, not of the original arguments.
 installed=()
 declare -A installed_exact=()
 declare -A selected=()
