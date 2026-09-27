@@ -5,21 +5,6 @@
 # omarchy:hidden=true
 # omarchy:requires-sudo=true
 
-# Upgrading systemd runs its post_upgrade scriptlet mid-transaction, which
-# reexecs both the system manager and every user manager. A pacman running
-# inside a user-session scope can be SIGKILLed by that reexec, abandoning the
-# transaction halfway. Registering the transaction as a PID 1 scope keeps it
-# out of the user manager's cgroups entirely, and system scopes survive the
-# system manager's own reexec.
-scope=()
-if [[ -d /run/systemd/system && ! -L /run/systemd/system ]]; then
-  scope=(systemd-run --scope --quiet --collect)
-fi
-
-# LC_ALL passes through so callers that parse pacman's stderr can pin the locale.
-env_args=(OMARCHY_UPDATE_PACMAN=1)
-if [[ -n ${LC_ALL:-} ]]; then
-  env_args+=(LC_ALL="$LC_ALL")
-fi
-
-exec sudo env "${env_args[@]}" "${scope[@]}" pacman "$@"
+# Resolved next to this script rather than off PATH, because the update flow
+# and the shell tests both reach this by absolute path.
+exec "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-transaction" --update pacman "$@"
