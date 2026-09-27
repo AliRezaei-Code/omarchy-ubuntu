@@ -3,8 +3,12 @@
 # omarchy:summary=Returns true if all of the named packages are installed on the system (or false if any of them are missing).
 # omarchy:args=<packages...>
 
-for pkg in "$@"; do
-  pacman -Q -- "$pkg" &>/dev/null || exit 1
-done
+# Resolved next to this script rather than off PATH: the shell tests and the
+# guard batch both invoke commands by absolute path, and a helper that only
+# answered when PATH happened to include bin/ would be a trap in exactly the
+# places that reach for it most.
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
 
-exit 0
+backend=$(omarchy_pkg_backend) || exit $?
+
+omarchy_pkg_query "$backend" "$@"

@@ -3,13 +3,22 @@
 # omarchy:summary=Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
 # omarchy:args=<packages...>
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
+backend=$(omarchy_pkg_backend) || exit $?
+
+if [[ $backend != "arch" ]]; then
+  echo "The AUR is only available on Arch-based Omarchy" >&2
+  exit 1
+fi
+
 if omarchy-pkg-missing "$@"; then
   yay -S --noconfirm --needed -- "$@" || exit 1
 fi
 
 for pkg in "$@"; do
   # Secondary check to handle states where pacman doesn't actually register an error
-  if ! pacman -Q -- "$pkg" &>/dev/null; then
+  if ! omarchy_pkg_query "$backend" "$pkg"; then
     echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
     exit 1
   fi

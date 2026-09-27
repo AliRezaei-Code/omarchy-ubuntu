@@ -3,9 +3,23 @@
 # omarchy:summary=Show a fuzzy-finder TUI for picking packages installed on the system to be removed.
 # omarchy:requires-sudo=true
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
+backend=$(omarchy_pkg_backend) || exit $?
+
+backend_script="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/omarchy-pkg-backend"
+
+export OMARCHY_PKG_BACKEND="$backend"
+
+pkg_preview=". \"$backend_script\"; omarchy_pkg_info \"\$OMARCHY_PKG_BACKEND\" {1}"
+
+if [[ $backend == "deb" ]]; then
+  pkg_preview+=" | fold -s"
+fi
+
 fzf_args=(
   --multi
-  --preview 'yay -Qi {1}'
+  --preview "$pkg_preview"
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
@@ -15,10 +29,12 @@ fzf_args=(
   --color 'pointer:red,marker:red'
 )
 
-pkg_names=$(yay -Qqe | fzf "${fzf_args[@]}")
+pkg_names=$(omarchy_pkg_list "$backend" | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
-  # Convert newline-separated selections to space-separated for yay
-  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -Rns --noconfirm
+  # pacman's -Rns prunes whatever nothing else needs, so asking for the same
+  # on apt is parity rather than a bonus.
+  read -r -a selected <<<"$pkg_names"
+  omarchy_pkg_remove "$backend" --autoremove "${selected[@]}"
   omarchy-show-done $?
 fi

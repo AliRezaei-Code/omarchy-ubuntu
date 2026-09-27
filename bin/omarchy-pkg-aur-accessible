@@ -2,5 +2,15 @@
 
 # omarchy:summary=Returns true if the AUR is up and available.
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
+# The shipped menu already keys its AUR rows on this command, so a non-zero
+# answer on a backend with no AUR hides those rows without any menu data
+# needing to know the port exists.
+if [[ $(omarchy_pkg_backend) != "arch" ]]; then
+  echo "The AUR is only available on Arch-based Omarchy" >&2
+  exit 1
+fi
+
 curl -sf --connect-timeout 30 --retry 3 --retry-delay 3 -A "omarchy-update" \
   "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" >/dev/null
