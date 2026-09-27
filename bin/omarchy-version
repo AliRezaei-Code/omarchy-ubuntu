@@ -34,6 +34,16 @@ for package in omarchy-dev omarchy; do
   [[ -n $version ]] && break
 done
 
+# The deb carries its version in a file, because a tree unpacked from a .deb
+# before dpkg has registered it -- a postinst running before the database
+# catches up, a container image built from the unpacked tree -- has no package
+# to ask. Reading the file is what `docs/file-layout.md` already ships it for.
+if [[ $backend == "deb" && -z $version ]]; then
+  if [[ -r $omarchy_path/version ]]; then
+    read -r version <"$omarchy_path/version" || version=""
+  fi
+fi
+
 [[ -n $version ]] || exit 1
 
 echo "$version"

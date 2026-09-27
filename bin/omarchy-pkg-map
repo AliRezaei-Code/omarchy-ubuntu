@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# omarchy:summary=Translate Arch package names to their Ubuntu equivalents.
+# omarchy:hidden=true
+
+# 126+ files pass Arch package names to the package backend, and editing them
+# all would be wrong twice over: it would be a rename nobody upstream could
+# merge, and it would put an Ubuntu name in the middle of a shell guard. So the
+# names are translated at the boundary instead, from one table, and on Arch the
+# translation is a no-op that leaves every one of those callers meaning exactly
+# what it meant before.
+#
+# The table is data, not code: install/pkg-map.conf, tab-separated --
+#
+#     arch_name<TAB>deb_packages[<TAB>binary_aliases]
+#
+# -- because one Arch package can become several Debian packages, and a
+# separator that cannot appear inside a name keeps the two apart.
+# `binary_aliases` are `arch_binary=ubuntu_binary` pairs for the renames Debian
+# does: `bat` is `batcat`, `fd` is `fdfind`, and the install step links them
+# into ~/.local/bin.
+#
+# Three answers, and the difference between the last two is the whole point:
+#
+#   a name the map translates        -> the Ubuntu names, exit 0
+#   a name the map does not mention  -> itself, exit 0
+#   a name with an empty package list -> nothing, exit 3
+#
+# The empty row is a declaration, not an omission. A name the map says nothing
+# about might be spelled the same on both systems, so passing it through can
+# only ever be right. A name with an empty row is one somebody looked at and
+# confirmed has no Ubuntu equivalent, and passing it through would ask apt for
+# a package that does not exist and report a failure nobody can act on.
+
+omarchy_pkg_map_path() {
+  local root="${OMARCHY_PATH:-/usr/share/omarchy}"
+
+  printf '%s/install/pkg-map.conf\n' "${root%/}"
+}
+
+# The row for a name, or non-zero when the map has no opinion about it.
+omarchy_pkg_map_lookup() {
+  local name="$1"
+  local map
+
+  map=$(omarchy_pkg_map_path) || return 1
+  [[ -r $map ]] || return 1
+
+  awk -F'\t' -v name="$name" '
+    /^[[:space:]]*(#|$)/ { next }
+    $1 == name { print; found = 1; exit }
+    END { exit(found ? 0 : 1) }
+  ' "$map"
+}
+
+# Prints the Ubuntu package names for an Arch name. Exit 3 means the map
+# declares there is no equivalent, which is not the same as not knowing.
+omarchy_pkg_map_translate() {
+  local name="$1"
+  local row packages
+
+  if ! row=$(omarchy_pkg_map_lookup "$name"); then
+    printf '%s\n' "$name"
+    return 0
+  fi
+
+  # A row with no tab at all means the same as a row with an empty second
+  # field: no Ubuntu equivalent. Both spellings turn up in a hand-edited data
+  # file, and making the file depend on a trailing tab nobody can see is a
+  # good way to lose a row.
+  if [[ $row != *$'\t'* ]]; then
+    return 3
+  fi
+
+  packages="${row#*$'\t'}"
+  packages="${packages%%$'\t'*}"
+
+  if [[ -z $packages ]]; then
+    return 3
+  fi
+
+  printf '%s\n' "$packages"
+}
+
+# Resolves a whole argument list, which is what a package command actually
+# has. The translated names land in OMARCHY_PKG_MAP_RESOLVED and the ones the
+# map declares impossible land in OMARCHY_PKG_MAP_UNSUPPORTED, because a caller
+# needs both: the list to act on, and the names to tell the user about. Stdout
+# cannot carry both, since one Arch name can become several Debian packages
+# and a name with no equivalent contributes nothing at all.
+#
+# Returns non-zero when anything was unsupported, with both arrays still set.
+OMARCHY_PKG_MAP_RESOLVED=()
+OMARCHY_PKG_MAP_UNSUPPORTED=()
+omarchy_pkg_map_resolve() {
+  local backend="$1"
+  shift
+
+  OMARCHY_PKG_MAP_RESOLVED=()
+  OMARCHY_PKG_MAP_UNSUPPORTED=()
+
+  local name translated
+  local -a expanded=()
+
+  for name in "$@"; do
+    # On Arch the table has nothing to say, and every caller keeps exactly the
+    # meaning it had before this existed.
+    if [[ $backend == "arch" ]]; then
+      OMARCHY_PKG_MAP_RESOLVED+=("$name")
+      continue
+    fi
+
+    if ! translated=$(omarchy_pkg_map_translate "$name"); then
+      OMARCHY_PKG_MAP_UNSUPPORTED+=("$name")
+      continue
+    fi
+
+    read -r -a expanded <<<"$translated"
+    OMARCHY_PKG_MAP_RESOLVED+=("${expanded[@]}")
+  done
+
+  (( ${#OMARCHY_PKG_MAP_UNSUPPORTED[@]} == 0 ))
+}
+
+# Every `arch_binary=ubuntu_binary` pair in the map, space separated.
+omarchy_pkg_map_aliases() {
+  local map row aliases pair
+  local -a found=()
+
+  map=$(omarchy_pkg_map_path) || return 1
+  [[ -r $map ]] || return 1
+
+  while IFS= read -r row; do
+    aliases="${row#*$'\t'}"
+    aliases="${aliases#*$'\t'}"
+    [[ $aliases == "$row" ]] && continue
+
+    for pair in $aliases; do
+      [[ $pair == *=* ]] && found+=("$pair")
+    done
+  done < <(awk -F'\t' '/^[[:space:]]*(#|$)/ { next } NF >= 3' "$map")
+
+  (( ${#found[@]} == 0 )) || printf '%s\n' "${found[*]}"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  status=0
+
+  for name in "$@"; do
+    if ! omarchy_pkg_map_translate "$name"; then
+      echo "omarchy-pkg-map: no Ubuntu package is equivalent to '$name'" >&2
+      status=3
+      continue
+    fi
+  done
+
+  exit $status
+fi

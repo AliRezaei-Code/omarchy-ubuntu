@@ -8,7 +8,15 @@
 # answered when PATH happened to include bin/ would be a trap in exactly the
 # places that reach for it most.
 source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-map"
 
 backend=$(omarchy_pkg_backend) || exit $?
 
-omarchy_pkg_query "$backend" "$@"
+omarchy_pkg_map_resolve "$backend" "$@"
+
+# A package the map declares to have no Ubuntu equivalent is by definition not
+# installed on Ubuntu, so it is missing here -- which is what `when:` guards
+# asking about it need to hear.
+(( ${#OMARCHY_PKG_MAP_UNSUPPORTED[@]} == 0 )) || exit 1
+
+omarchy_pkg_query "$backend" "${OMARCHY_PKG_MAP_RESOLVED[@]}"

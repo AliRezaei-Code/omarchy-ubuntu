@@ -4,9 +4,14 @@
 # omarchy:args=<packages...>
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-map"
 
 backend=$(omarchy_pkg_backend) || exit $?
 
-omarchy_pkg_query "$backend" "$@" && exit 1
+omarchy_pkg_map_resolve "$backend" "$@"
+
+(( ${#OMARCHY_PKG_MAP_UNSUPPORTED[@]} == 0 )) || exit 0
+
+omarchy_pkg_query "$backend" "${OMARCHY_PKG_MAP_RESOLVED[@]}" && exit 1
 
 exit 0

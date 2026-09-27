@@ -86,3 +86,39 @@ if git -C "$test_tmp/checkout" init -q 2>/dev/null; then
 else
   skip "git unavailable; cannot make a checkout to report a hash for"
 fi
+
+# The packaged path is the one a .deb actually reports from, and it cannot be
+# faked by pointing OMARCHY_PATH somewhere else: the script treats any other
+# path as a development checkout and reports `dev`. A user namespace with a
+# private bind mount is the way to exercise it without root, and when even
+# that is unavailable the check stands down rather than pretending to pass.
+packaged_root=$(mktemp -d)
+mkdir -p "$packaged_root/omarchy"
+
+if unshare -Urm true 2>/dev/null; then
+  packaged_version=$(unshare -Urm sh -c "
+    mount --bind '$packaged_root' /usr/share 2>/dev/null || exit 90
+    printf '4.0.0.alpha\n' > /usr/share/omarchy/version
+    OMARCHY_PKG_BACKEND=deb '$ROOT/bin/omarchy-version'
+  " 2>/dev/null)
+  status=$?
+
+  if (( status == 90 )); then
+    skip "the user namespace cannot bind /usr/share; cannot mount a fake packaged tree"
+  elif (( status != 0 )); then
+    fail "a packaged deb tree reports its version file" "exit $status"
+  else
+    [[ $packaged_version == "4.0.0.alpha" ]] ||
+      fail "a packaged deb tree reports its version file" "$packaged_version"
+    pass "a packaged deb tree reports its version file"
+  fi
+
+  # A checkout is a different answer, and it wins: whatever the version file
+  # says, a tree that is not the packaged one is development.
+  checkout_version=$(OMARCHY_PATH="$packaged_root/omarchy" "$ROOT/bin/omarchy-version")
+  [[ $checkout_version == dev* ]] ||
+    fail "a tree that is not the packaged one reports as development" "$checkout_version"
+  pass "a tree that is not the packaged one reports as development"
+else
+  skip "no user namespaces; cannot mount a fake packaged tree"
+fi

@@ -6,14 +6,29 @@
 # omarchy:requires-sudo=true
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-map"
 
 backend=$(omarchy_pkg_backend) || exit $?
 
-if omarchy-pkg-missing "$@"; then
-  omarchy_pkg_install "$backend" "$@" || exit 1
+omarchy_pkg_map_resolve "$backend" "$@"
+
+# Said out loud rather than skipped in silence: a caller that asked for a
+# package and got nothing back has to be able to tell the difference between
+# "already installed" and "this system has no such thing".
+for name in "${OMARCHY_PKG_MAP_UNSUPPORTED[@]}"; do
+  echo "omarchy-pkg-add: no Ubuntu package is equivalent to '$name'; skipping it" >&2
+done
+
+(( ${#OMARCHY_PKG_MAP_RESOLVED[@]} > 0 )) || exit 0
+
+# Through the command rather than the backend function, because that is the
+# seam callers and tests have always stubbed. The names are already resolved,
+# so the second translation is a no-op.
+if omarchy-pkg-missing "${OMARCHY_PKG_MAP_RESOLVED[@]}"; then
+  omarchy_pkg_install "$backend" "${OMARCHY_PKG_MAP_RESOLVED[@]}" || exit 1
 fi
 
-for pkg in "$@"; do
+for pkg in "${OMARCHY_PKG_MAP_RESOLVED[@]}"; do
   # Secondary check to handle states where the package manager doesn't actually
   # register an error.
   if ! omarchy_pkg_query "$backend" "$pkg"; then
