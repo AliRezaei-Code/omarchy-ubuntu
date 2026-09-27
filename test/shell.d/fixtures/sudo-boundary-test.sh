@@ -31,6 +31,7 @@ PY
 
 copy_boundary_file bin/omarchy-security-functions
 copy_boundary_file bin/omarchy-update-pacman
+copy_boundary_file bin/omarchy-pkg-transaction
 copy_boundary_file default/omarchy/sudo-no-update/sudo
 
 cat >"$SUDO_TEST_ROOT/mock/sudo" <<'STUB'

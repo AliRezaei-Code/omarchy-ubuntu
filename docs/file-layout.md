@@ -70,6 +70,7 @@ bin/omarchy-*                  ──►  omarchy             /usr/bin/omarchy-*
 bin/omarchy-debug,
 bin/omarchy-debug-idle,
 bin/omarchy-upload-log         ──►  omarchy-settings    /usr/bin/  (needed before omarchy is installed)
+bin/omarchy-pkg-backend         ──►  omarchy-settings    /usr/bin/  (sourced by the three above)
 
 default/libalpm/hooks/*.hook
                                 ──►  omarchy             /usr/share/libalpm/hooks/*.hook
@@ -139,6 +140,13 @@ logo.{txt,svg}, icon.{txt,png}  ──► omarchy-settings    /usr/share/omarchy
 ```
 
 The hardware-conditional `force-igpu` and `keyboard-backlight` sources also live under `default/systemd/system-sleep/`, but their setup commands publish root-owned copies only on machines that need them; they are not installed by `omarchy-settings`.
+
+`bin/omarchy-pkg-backend` has to travel in `omarchy-settings` for the same
+reason the three commands above do: `omarchy-debug` and `omarchy-upload-log`
+run on a live ISO before the `omarchy` package is installed, and they ask the
+backend which package manager they are on. Without it in the same package they
+cannot answer on a machine that has Omarchy's shell but not Omarchy's
+packages.
 
 ### Why `etc-overrides/` exists
 

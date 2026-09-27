@@ -47,7 +47,20 @@ fi
 echo "upgrade complete"
 STUB
 
-chmod +x "$stub_bin/sudo" "$stub_bin/systemd-run" "$stub_bin/pacman"
+# The deb backend answers the same step with one shielded apt transaction. The
+# stub records the argv apt-get was actually handed; APT_GET_STATUS is where a
+# deb case can make it fail.
+cat >"$stub_bin/apt-get" <<'STUB'
+#!/bin/bash
+printf 'apt-get' >"$APT_CALLS"
+for arg in "$@"; do
+  printf '\t%s' "$arg" >>"$APT_CALLS"
+done
+printf '\n' >>"$APT_CALLS"
+exit "${APT_GET_STATUS:-0}"
+STUB
+
+chmod +x "$stub_bin/sudo" "$stub_bin/systemd-run" "$stub_bin/pacman" "$stub_bin/apt-get"
 
 # Everything a blocked qemu-common upgrade leaves on stderr, and no more. The
 # ":: ... Remove qemu-block-gluster? [y/N]" pacman asked is deliberately absent:
@@ -62,8 +75,12 @@ write_conflict_report() {
   } >"$test_tmp/report"
 }
 
+# $1 optionally names the backend. Left empty, the pacman stub on PATH is what
+# the unset case resolves to, so the arch cases below never state their own.
 update_env() {
   printf '%s\n' \
+    "OMARCHY_PKG_BACKEND=${1:-}" \
+    "APT_CALLS=$test_tmp/apt-calls" \
     "OMARCHY_REPLACED_DIR=$test_tmp/replaced" \
     "PACMAN_ATTEMPTS=$test_tmp/attempts" \
     "PACMAN_CALLS=$test_tmp/calls" \
@@ -76,7 +93,7 @@ update_env() {
 
 # No terminal on any stream, the way a cron or ssh caller arrives.
 run_headless() {
-  mapfile -t environment < <(update_env)
+  mapfile -t environment < <(update_env "${1:-}")
   env "${environment[@]}" bash "$ROOT/bin/omarchy-update-system-pkgs" \
     </dev/null >"$test_tmp/out" 2>"$test_tmp/err"
 }
@@ -161,3 +178,37 @@ fi
 [[ $(call_line 1 args) == *"--noconfirm"* ]] ||
   fail "a caller can ask for an interactive upgrade directly"
 pass "only the conflict handler can hand the upgrade to a person"
+
+# dpkg replaces what the package database owns and answers a conffile with
+# confold, so there is no conflict handler to reach for and no --overwrite to
+# pass: the whole of the answer to pacman's failure modes is one shielded apt
+# upgrade. APT::Upgrade-Allow-New is in it because without it a new Omarchy
+# release can never pull in a dependency that did not exist when it was cut.
+write_conflict_report
+: >"$test_tmp/apt-calls"
+run_headless deb ||
+  fail "a backend with no pacman conflict handler fails its package update" "$(cat "$test_tmp/err")"
+[[ $(cat "$test_tmp/apt-calls") == \
+  $'apt-get\t-y\t-o\tDpkg::Options::=--force-confold\t-o\tAPT::Upgrade-Allow-New=true\tupgrade' ]] ||
+  fail "the deb package update is not the shielded apt upgrade it composes" "$(cat "$test_tmp/apt-calls")"
+(($(cat "$test_tmp/attempts") == 0)) ||
+  fail "a backend with no pacman conflict handler still reaches for pacman"
+grep -q 'Update system packages' "$test_tmp/out" ||
+  fail "the deb package update does not say what it is doing" "$(cat "$test_tmp/out")"
+pass "the package update is one shielded apt upgrade where pacman has no conflicts"
+
+# The handler is pacman error text from top to bottom, and dpkg has no failure
+# of that shape to recover from, so on a backend without pacman it refuses
+# rather than reading a report nobody wrote.
+write_conflict_report
+mapfile -t environment < <(update_env deb)
+if env "${environment[@]}" OMARCHY_UPDATE_CONFLICT=1 \
+  bash "$ROOT/bin/omarchy-update-system-pkgs-when-conflicted" "$test_tmp/report" \
+  </dev/null >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "the pacman conflict handler runs on a backend without pacman"
+fi
+grep -q 'requires an Arch-based Omarchy system' "$test_tmp/err" ||
+  fail "the conflict handler does not say why it refused" "$(cat "$test_tmp/err")"
+(($(cat "$test_tmp/attempts") == 0)) ||
+  fail "the conflict handler reached for pacman before refusing"
+pass "the pacman conflict recovery refuses on a backend without pacman"

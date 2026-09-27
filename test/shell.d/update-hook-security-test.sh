@@ -9,6 +9,8 @@ copy_boundary_file bin/omarchy-refresh-pacman
 # Replace the step symlink, preserving the real fixture dispatcher.
 rm "$SUDO_TEST_ROOT/bin/omarchy-update-aur-pkgs"
 copy_boundary_file bin/omarchy-update-aur-pkgs
+# The AUR phase reads the active backend, so the seam travels with it.
+copy_boundary_file bin/omarchy-pkg-backend
 export OMARCHY_UPDATE_LOGGED=1
 
 run_update() {

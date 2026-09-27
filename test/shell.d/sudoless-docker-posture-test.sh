@@ -13,10 +13,19 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # First-boot provisioning must not replay old privileged defaults.
 mkdir -p "$TMPDIR/bin"
 printf '#!/bin/bash\nexit 0\n' >"$TMPDIR/bin/getent" # every group "exists"
+# The controller check goes through the package backend, which asks about one
+# package at a time and passes the name after `--`. Answer that form: a stub
+# that only understood the old `-Qq` call would make every package look absent
+# and the "must not replay" assertion would pass for the wrong reason.
 cat >"$TMPDIR/bin/pacman" <<'STUB'
 #!/bin/bash
-[[ $1 == "-Qq" ]] || exit 2
-[[ " ${STUB_PACKAGES:-} " == *" $2 "* ]]
+[[ $1 == "-Q" ]] || exit 2
+shift
+[[ ${1:-} == "--" ]] && shift
+for want in "$@"; do
+  [[ " ${STUB_PACKAGES:-} " == *" $want "* ]] || exit 1
+done
+exit 0
 STUB
 chmod +x "$TMPDIR/bin/getent" "$TMPDIR/bin/pacman"
 export PATH="$TMPDIR/bin:$PATH"
@@ -25,7 +34,10 @@ PROVISIONING_DIR="$TMPDIR/prov"
 mkdir -p "$PROVISIONING_DIR"
 printf 'wheel\ninput\ndocker\n' >"$PROVISIONING_DIR/groups"
 
-# Load the real user_groups() from the provisioning command and run it.
+# Load the real user_groups() from the provisioning command and run it. The
+# backend it now calls has to come with it, or the check silently answers
+# "command not found" and every package looks absent.
+source "$ROOT/bin/omarchy-pkg-backend"
 eval "$(sed -n '/^user_groups() {/,/^}/p' "$ROOT/bin/omarchy-provision-owner")"
 groups=$(user_groups)
 
