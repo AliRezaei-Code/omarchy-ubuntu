@@ -161,6 +161,54 @@ without a file conflict. Instead their sources (under `etc/` in the repo;
 Tradeoff: user edits to those files get clobbered on every `omarchy-settings`
 upgrade. This is documented in the PKGBUILD.
 
+## The unsupported surface
+
+This tree runs on Ubuntu 22.04 (jammy) as well as Arch. `bin/omarchy-pkg-backend` picks pacman or apt at runtime and Arch is still the default, so the paths in the build-time map above are all live on an Arch install and inert on a deb one; the installed layout itself does not change, because the deb puts the same tree at `/usr/share/omarchy` with `/usr/bin/omarchy-*` binaries, which is the packaged contract `default/bash/env-bootstrap` already encodes. Parity here does not mean pretending. It means an Arch-only command says which thing it belongs to, rather than failing three frames deep inside a package manager that isn't there. The generic form of that is `bin/omarchy-requires-arch`, which prints `omarchy: '<feature>' requires an Arch-based Omarchy system` to stderr and exits 1.
+
+`install/pkg-map.conf` is the machine-readable form of the same boundary. It is one row per Arch name that Ubuntu spells differently, and a row with an **empty** package list where somebody checked the jammy archive and there is no equivalent. An empty list is a declaration, not an omission: it is what stops a caller asking apt for a package that does not exist and reporting a failure nobody can act on. The seven items below are the parts of the tree that boundary leaves out.
+
+### AUR packages
+
+`bin/omarchy-pkg-aur-add`, `bin/omarchy-pkg-aur-install` and `bin/omarchy-pkg-aur-accessible` are Omarchy's AUR client, and `bin/omarchy-update-aur-pkgs` is the AUR phase of `omarchy update`. All four drive `yay`. The AUR is an Arch-only user repository, so there is nothing on Ubuntu that speaks it and there is no way to shim it.
+
+On the deb backend all four print `The AUR is only available on Arch-based Omarchy` on stderr, and `install/pkg-map.conf` declares `yay` with an empty package list. The three `omarchy-pkg-aur-*` commands exit 1; `omarchy-update-aur-pkgs` exits 0, because it is a phase inside `omarchy update` and must not abort the update that has already upgraded everything else. `omarchy-pkg-aur-accessible` returning non-zero is the entire integration: the shipped menu already keys its AUR rows on that command, so the rows disappear without any menu data learning that the port exists. A user installs a PPA or a vendor `.deb` instead.
+
+### Limine boot management
+
+Omarchy's bootloader is Limine, configured from `default/limine/limine.conf` and `default/limine/default.conf` plus the two `limine-entry-tool` drop-ins in `etc/limine-entry-tool.d/` (`omarchy-defaults.conf`, `omarchy-uki.conf`). Ubuntu boots through GRUB, which its own tooling owns; rewriting a distribution's bootloader is not something a package install should do, and the two are not interchangeable.
+
+On Ubuntu no bootloader is touched at all — no entry is written, no `@@CMDLINE@@` substitution happens, `omarchy-refresh-limine` has nothing to refresh — and `install/pkg-map.conf` declares `limine` and `limine-svn` with empty package lists. Boot entries, kernel images and the boot menu are GRUB's, maintained by `update-grub`.
+
+### mkinitcpio initramfs configuration
+
+`etc/mkinitcpio.conf.d/omarchy_hooks.conf` and `etc/mkinitcpio.conf.d/thunderbolt_module.conf` are mkinitcpio drop-ins: the Omarchy hooks module and the Thunderbolt module. mkinitcpio is Arch's initramfs generator, and its module vocabulary is not a packaging detail you can port — Ubuntu builds its initramfs with `initramfs-tools` (or dracut) from its own module and hook set under `/etc/initramfs-tools/`, which is a different program with a different configuration language.
+
+On Ubuntu the two drop-ins are inert and `mkinitcpio`, `mkinitcpio-firmware` and `mkinitcpio-openssl` are declared with empty package lists in `install/pkg-map.conf`. Ubuntu's initramfs is rebuilt by `update-initramfs`, and nothing in this tree edits it.
+
+### ALPM package hooks
+
+`default/libalpm/hooks/*.hook` is four files that pacman runs inside its own transactions: `00-omarchy-update-guard.hook` (PreTransaction on any upgrade, redirecting to `omarchy update`), `05-omarchy-passwordless-revoke.hook` (PreTransaction on an `omarchy-settings` change), and the pair `10-omarchy-hyprland-reload-pause.hook` / `90-omarchy-hyprland-reload-resume.hook`, which pause and resume Hyprland's config auto-reload around a settings update. ALPM is Arch's package library; dpkg has no hook point inside a transaction, so there is nowhere to route them.
+
+The four files stay in the tree, and that is the decision rather than the omission: upstream ships them, so deleting them would make every merge from `quattro` conflict over a directory that is still theirs. On Ubuntu they simply never fire. The one hand-reachable path, `bin/omarchy-update-pacman-guard` — the sole target of `00-omarchy-update-guard.hook` — refuses with `omarchy: 'the ALPM package hook' requires an Arch-based Omarchy system`, because a user who reaches it by hand is asking about a package manager they do not have.
+
+### Arch kernel package migration
+
+The migrations that install, replace and roll back the `linux-t2` kernel packages Omarchy ships and migrates between (`migrations/1785273276.sh`, `migrations/1789325478.sh`, `migrations/1789444024.sh`, and anything else keyed on `linux-t2`) are coupled to Arch's kernel packages by name. Those packages do not exist in Ubuntu, where the kernel is the distribution's and is versioned and upgraded through apt like everything else.
+
+They carry `# omarchy:platform=arch`, which `omarchy-migrate` reads from the first five lines of the file. On the deb backend such a migration does not run, and `omarchy-migrate` still writes its marker under `~/.local/state/omarchy/migrations/` rather than leaving it unmarked — a migration that never records itself is one re-examined at every login for the rest of the machine's life. The kernel a user gets is whatever `apt` provides.
+
+### The Quickshell / Hyprland desktop shell
+
+`shell/**` is a Quickshell interface to Hyprland: the bar, the popups, the notification popper, the menu. Neither Quickshell nor Hyprland is in the jammy archive, and neither is a package-rename problem, so the shell cannot run here at all.
+
+What a user gets instead is `omarchy dashboard`, which picks the GTK/libadwaita app when there is a display to draw on and the terminal UI otherwise, with `omarchy dashboard app` and `omarchy dashboard tui` to force either. The shell is not dead weight, and that is the part worth knowing before deleting it: the model is what all three surfaces agree on. `shell/plugins/menu/MenuModel.js` parses the menu and evaluates its `when:` guards for the Quickshell menu (`shell/plugins/menu/Menu.qml`) and for `shell/plugins/menu/MenuSnapshot.js`, which builds the resolved tree behind `omarchy menu snapshot`; the GTK app and the TUI both render that snapshot rather than deciding visibility for themselves, and `shell/plugins/menu/TuiModel.js` holds the terminal UI's pure logic with `DashboardTui.js` doing only the drawing. A row therefore means the same thing in all three, and the shell's menu cannot drift from the two front ends that replaced it.
+
+### The ISO installer
+
+The live installer lives in the sibling `omarchy-iso` repository, not here. This repo's root-side orchestration — `omarchy-apply-system`, `omarchy-provision-owner`, `install/config/`, `install/hardware/`, `install/login/` — is written to be driven by that image, and the ISO is a separate artifact with a separate build.
+
+So this one is out of scope rather than broken: there is no Ubuntu ISO to build, and no part of the target Ubuntu system's behavior depends on there being one. A user on 22.04 installs the packaged tree onto an existing system and never enters the provisioning-owner path.
+
 ## Locate indexing
 
 `default/systemd/system/plocate-updatedb.service.d/10-omarchy.conf` ships through `omarchy-settings` to `/usr/lib/systemd/system/plocate-updatedb.service.d/10-omarchy.conf`. It replaces the existing service's `ExecStart` with `updatedb --prune-bind-mounts=no --add-prunepaths=/.snapshots`, keeping Btrfs subvolume mounts searchable and excluding Snapper snapshots. The upstream service retains its timer, resource limits, and sandbox; Omarchy's existing AC-power condition still applies.
