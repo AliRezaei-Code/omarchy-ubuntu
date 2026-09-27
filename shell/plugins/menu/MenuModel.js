@@ -408,30 +408,77 @@ var GUARD_READERS = [
 // them everywhere, including for no arguments at all (present is true of
 // nothing, missing is not).
 //
-// `pacman -Q` resolves a name through what installed packages provide, not
-// just what they are called -- with gvim installed it reports `vim` as
-// present -- so the set has to carry provides too, or `install.editor.vim`
-// comes back and offers to install what is already there. A version
-// constraint (`bash>=1`) is not a name any set can answer, so it goes to
-// pacman itself; no shipped guard writes one.
+// Which package manager is answering is a runtime question, not a build-time
+// one: the same generated script runs on Arch and on Ubuntu. `backend`
+// exists so a test can pin a branch -- `guardScript(items, "deb")` -- without
+// the QML call site, which knows nothing about package managers, having to
+// learn about it. Left empty, the script asks.
+//
+// The two snapshots are not interchangeable. `pacman -Q` resolves a name
+// through what installed packages provide, not just what they are called --
+// with gvim installed it reports `vim` as present -- so the Arch set carries
+// provides too, or `install.editor.vim` comes back and offers to install what
+// is already there. Debian has no equivalent: there is no cheap query that
+// enumerates what every installed package provides, and reading
+// `apt-cache show` per package would cost more than the whole batch is worth.
+// So the deb set carries installed names only, and a guard written against a
+// name Debian only provides will read as absent. That gap is documented in
+// docs/menu.md rather than papered over.
 //
 // `pacman -Qi` wraps a long list across continuation lines whenever COLUMNS
 // is set in the environment, which a login shell may well have done, so the
 // parser follows the indented lines rather than reading the first one and
-// dropping half of what is installed.
-function guardHelpers() {
-  return 'declare -A __omarchy_pkgs=()\n'
-    + 'mapfile -t __omarchy_pkg_names < <({ pacman -Qq; LC_ALL=C pacman -Qi'
+// dropping half of what is installed. `dpkg-query -W -f` does not wrap.
+//
+// A version constraint (`bash>=1`) is not a name any set can answer, so it goes
+// to the package manager itself; no shipped guard writes one.
+//
+// The name map is read in here too, and for the same reason everything else is:
+// the real `omarchy-pkg-present` resolves a name through install/pkg-map.conf
+// before it asks anything. A shadow that skipped that step would answer a
+// different question from the command it stands in for, and `install.editor.*`
+// would offer to install what the two systems agree is already there. It is
+// read once into an associative array rather than looked up per row, so the
+// cost is one awk for the whole batch and nothing per row.
+function guardHelpers(backend) {
+  var pacmanSnapshot =
+    'mapfile -t __omarchy_pkg_names < <({ pacman -Qq; LC_ALL=C pacman -Qi'
     + " | awk '/^[A-Za-z]/ { provides = ($0 ~ /^Provides/); sub(/^[^:]*: /, \"\") }"
     + ' provides && $0 != "None" { n = split($0, p, " ");'
     + ' for (i = 1; i <= n; i++) { sub(/[<>=].*/, "", p[i]); print p[i] } }\'; } 2>/dev/null)\n'
     + 'for __omarchy_pkg in "${__omarchy_pkg_names[@]}"; do __omarchy_pkgs[$__omarchy_pkg]=1; done\n'
-    + '__omarchy_pkg_has() { [[ -n ${__omarchy_pkgs[$1]-} ]] && return 0; '
-    + '[[ $1 == *[\\<\\>=]* ]] && { pacman -Q "$1" &>/dev/null; return; }; return 1; }\n'
+    + '__omarchy_pkg_has() { local n; for n in ${__omarchy_pkg_map[$1]-$1}; do '
+    + '[[ -n ${__omarchy_pkgs[$n]-} ]] && return 0; done; '
+    + '[[ $1 == *[\\<\\>=]* ]] && { pacman -Q "$1" &>/dev/null; return; }; return 1; }\n';
+
+  // `${db:Status-Abbrev}` is the same two-letter status `dpkg -l` prints, so
+  // the `ii` filter here is the filter a reader of that command would apply by
+  // hand: installed and not merely removed-but-not-purged.
+  var debSnapshot =
+    "mapfile -t __omarchy_pkg_names < <(dpkg-query -W -f='${binary:Package}\\n' 2>/dev/null "
+    + "| awk 'NF { print $1 }')\n"
+    + 'for __omarchy_pkg in "${__omarchy_pkg_names[@]}"; do __omarchy_pkgs[$__omarchy_pkg]=1; done\n'
+    + '__omarchy_pkg_has() { local n; for n in ${__omarchy_pkg_map[$1]-$1}; do '
+    + '[[ -n ${__omarchy_pkgs[$n]-} ]] && return 0; done; '
+    + '[[ $1 == *[\\<\\>=]* ]] && { dpkg-query -W -- "$1" &>/dev/null; return; }; return 1; }\n';
+
+  var snapshot = pacmanSnapshot;
+
+  if (backend === "deb") snapshot = debSnapshot;
+  else if (backend === "arch") snapshot = pacmanSnapshot;
+  else snapshot = "if command -v pacman &>/dev/null; then\n" + pacmanSnapshot + "else\n" + debSnapshot + "fi\n";
+
+  return 'declare -A __omarchy_pkgs=()\n'
+    + 'declare -A __omarchy_pkg_map=()\n'
+    + "while IFS=$'\\t' read -r __omarchy_pkg_key __omarchy_pkg_value; do "
+    + '[[ -n $__omarchy_pkg_key ]] && __omarchy_pkg_map[$__omarchy_pkg_key]="$__omarchy_pkg_value"; '
+    + 'done < <(awk -F\'\\t\' \'/^[[:space:]]*(#|$)/ { next } NF > 1 && $2 != "" '
+    + '{ print $1 "\\t" $2 }\' "${OMARCHY_PATH:-/usr/share/omarchy}/install/pkg-map.conf" 2>/dev/null)\n'
+    + snapshot
     + 'omarchy-pkg-present() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 1; done; return 0; }\n'
     + 'omarchy-pkg-missing() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 0; done; return 1; }\n'
     + 'omarchy-cmd-present() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 1; done; return 0; }\n'
-    + 'omarchy-cmd-missing() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 0; done; return 1; }\n'
+    + 'omarchy-cmd-missing() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 0; done; return 1; }\n';
 }
 
 // Substitute the captured answer into the expression rather than shadowing
@@ -440,8 +487,8 @@ function guardHelpers() {
 // same way unquoted -- while a function would also catch `command -v reader`,
 // `VAR=x reader`, and every other form, and answer those wrong. Anything but
 // the plain substitution is left alone to run the real command.
-function guardPrelude(guards) {
-  var prelude = guardHelpers()
+function guardPrelude(guards, backend) {
+  var prelude = guardHelpers(backend)
 
   for (var i = 0; i < GUARD_READERS.length; i++) {
     // The guards arrive already substituted, so what marks a reader as wanted
@@ -475,7 +522,7 @@ function guardLine(id, tag, expression) {
 // reporting `<id>:<w|c|d>:<0|1>` per line. Speed is the whole point: the menu
 // opens on the last evaluation's answers, so however long this takes is how
 // long a row can contradict the state it describes.
-function guardScript(items) {
+function guardScript(items, backend) {
   var guards = ""
   var ids = Object.keys(items || {})
 
@@ -487,7 +534,7 @@ function guardScript(items) {
     if (entry.disabled) guards += guardLine(ids[i], "d", entry.disabled)
   }
 
-  return guards ? guardPrelude(guards) + guards : ""
+  return guards ? guardPrelude(guards, backend) + guards : ""
 }
 
 if (typeof module !== "undefined") {

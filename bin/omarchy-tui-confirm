@@ -1,0 +1,255 @@
+#!/bin/bash
+
+# omarchy:summary=Ask a yes/no question in the terminal
+# omarchy:group=tui
+# omarchy:name=confirm
+# omarchy:args=[--default|--default=false] [--affirmative T] [--negative T] [--header T] <question>
+# omarchy:examples=omarchy-tui-confirm "Reboot now?"|omarchy tui confirm --default=false "Delete ~/.openclaw?"
+
+# The headless replacement for `gum confirm`.
+#
+# The question and the two answers are drawn on stderr, and the answer is the
+# exit status: 0 for yes, 1 for no. A cancel is also 1, because no caller in
+# this tree can tell the two apart -- every one of them writes either
+# `if gum confirm ...; then act; fi` or `if ! gum confirm ...; then stop; fi`,
+# and both treat a non-zero answer the same way. gum agrees: esc and "no" are
+# the same exit status there too.
+#
+# --default decides what a bare enter submits, and it defaults to yes. The six
+# destructive call sites in bin/ all spell out `--default=false`
+# (omarchy-update-orphan-pkgs, omarchy-channel-set, omarchy-windows-vm, the
+# three omarchy-remove-ai-* removers), which only earns its keep if the
+# unqualified default is the other way round: a flag nobody writes down is a
+# flag that changes nothing.
+
+set -euo pipefail
+
+header=""
+affirmative="Yes"
+negative="No"
+default_yes=1
+question=""
+
+usage() {
+  echo "Usage: omarchy-tui-confirm [--default|--default=false] [--affirmative T] [--negative T] [--header T] <question>" >&2
+}
+
+while (( $# > 0 )); do
+  arg="$1"
+  shift
+  case "$arg" in
+  --default)
+    default_yes=1
+    ;;
+  --default=true)
+    default_yes=1
+    ;;
+  --default=false)
+    default_yes=0
+    ;;
+  --affirmative)
+    (( $# > 0 )) || { echo "omarchy-tui-confirm: --affirmative requires a value" >&2; exit 64; }
+    affirmative="$1"
+    shift
+    ;;
+  --negative)
+    (( $# > 0 )) || { echo "omarchy-tui-confirm: --negative requires a value" >&2; exit 64; }
+    negative="$1"
+    shift
+    ;;
+  --header)
+    (( $# > 0 )) || { echo "omarchy-tui-confirm: --header requires a value" >&2; exit 64; }
+    header="$1"
+    shift
+    ;;
+  --)
+    break
+    ;;
+  -*)
+    echo "omarchy-tui-confirm: unknown option '$arg'" >&2
+    usage
+    exit 64
+    ;;
+  *)
+    # The question is the first operand and it ends flag parsing. The operand
+    # was shifted before the case ran, so put it back.
+    set -- "$arg" "$@"
+    break
+    ;;
+  esac
+done
+
+question="$*"
+
+if [[ -z $question ]]; then
+  echo "omarchy-tui-confirm: a question is required" >&2
+  usage
+  exit 64
+fi
+
+# gum draws its prompt on stderr, so a redirected stderr is a question nobody
+# can see. bin/omarchy-remove-ai-perplexity guards on the same two tests and
+# test/shell.d/remove-ai-test.sh proves the branch.
+[[ -t 2 ]] || {
+  echo "omarchy-tui-confirm: stderr is not a terminal, so the question would be invisible" >&2
+  exit 2
+}
+
+if [[ -t 0 ]]; then
+  exec 3<&0
+else
+  if (: <>/dev/tty) 2>/dev/null; then
+    exec 3<>/dev/tty
+  else
+    echo "omarchy-tui-confirm: no terminal to read from (stdin is not a terminal and /dev/tty is unavailable)" >&2
+    exit 2
+  fi
+fi
+
+tty_saved=$(stty -g <&3 2>/dev/null) || tty_saved=""
+if [[ -n $tty_saved ]]; then
+  restore_tty() {
+    stty "$tty_saved" <&3 2>/dev/null || true
+  }
+  trap restore_tty EXIT
+  # Raw input so a key is a key. ISIG stays off so ctrl-c arrives as a byte to
+  # cancel on rather than a signal; OPOST/ONLCR come back so the redraw moves
+  # down a line.
+  stty raw -echo <&3 2>/dev/null || true
+  stty opost onlcr <&3 2>/dev/null || true
+fi
+
+term_size=$(stty size <&3 2>/dev/null) || term_size=""
+term_cols=80
+if [[ $term_size =~ ^([0-9]+)[[:space:]]+([0-9]+)$ ]]; then
+  term_cols="${BASH_REMATCH[2]}"
+fi
+# A pty nobody sized reports 0 columns, which is not a real 0-wide terminal;
+# assume 80 rather than clip every line down to nothing.
+(( term_cols > 0 )) || term_cols=80
+
+selected="$default_yes"
+drawn=0
+
+# drawn counts the newlines the last render emitted, which is exactly how far
+# the cursor has to travel back up to redraw in place.
+render() {
+  local left=""
+  local right=""
+
+  (( drawn > 0 )) && printf '\033[%dA' "$drawn" >&2
+  drawn=0
+
+  if [[ -n $header ]]; then
+    printf '\r\033[2K%s\n' "${header:0:$((term_cols - 1))}" >&2
+    drawn=1
+  fi
+
+  printf '\r\033[2K%s\n' "${question:0:$((term_cols - 1))}" >&2
+  drawn=$((drawn + 1))
+
+  if (( selected == 1 )); then
+    left="[ $affirmative ]"
+    right="  $negative  "
+  else
+    left="  $affirmative  "
+    right="[ $negative ]"
+  fi
+  printf '\r\033[2K%s%s\033[K' "$left" "$right" >&2
+  return 0
+}
+
+
+# A bare esc cancels; an esc that starts an arrow sequence moves the
+# selection. The follow-up reads time out, so a lone esc costs a keystroke's
+# worth of nothing rather than a hang.
+read_key_expanded() {
+  read_key
+  (( KEY_EOF == 1 )) && return 0
+  [[ $KEY == $'\x1b' ]] || return 0
+
+  local bracket=""
+  local tail=""
+  if IFS= read -r -s -N 1 -t 0.05 bracket <&3 2>/dev/null && [[ $bracket == "[" || $bracket == "O" ]]; then
+    if IFS= read -r -s -N 1 -t 0.05 tail <&3 2>/dev/null; then
+      case "$tail" in
+      A | D) KEY="negative" ;;
+      B | C) KEY="affirmative" ;;
+      esac
+    fi
+  fi
+  return 0
+}
+
+# Collapse the block down to the one line that is left behind.
+finish() {
+  (( drawn > 0 )) && printf '\033[%dA' "$((drawn - 1))" >&2
+  printf '\r\033[2K%s\033[K\n' "$1" >&2
+  return 0
+}
+
+KEY=""
+KEY_EOF=0
+
+read_key() {
+  KEY_EOF=0
+  KEY=""
+  local char=""
+  if ! IFS= read -r -s -N 1 char <&3; then
+    KEY_EOF=1
+    return 0
+  fi
+  KEY="$char"
+  # 0x04 is end-of-transmission, which POSIX defines as end of input; the pty
+  # driver behind script(1) uses it to close out a scripted session.
+  [[ $KEY == $'\x04' ]] && KEY_EOF=1
+  return 0
+}
+
+while :; do
+  render
+
+  read_key_expanded
+  if (( KEY_EOF == 1 )); then
+    finish "$question cancelled"
+    exit 1
+  fi
+
+  case "$KEY" in
+  y | Y)
+    finish "$question Yes"
+    exit 0
+    ;;
+  n | N)
+    finish "$question No"
+    exit 1
+    ;;
+  $'\r' | $'\n')
+    if (( selected == 1 )); then
+      finish "$question Yes"
+      exit 0
+    fi
+    finish "$question No"
+    exit 1
+    ;;
+  $'\x1b' | $'\x03')
+    finish "$question cancelled"
+    exit 1
+    ;;
+  affirmative)
+    selected=1
+    ;;
+  negative)
+    selected=0
+    ;;
+  h)
+    selected=0
+    ;;
+  l)
+    selected=1
+    ;;
+  ' ' | $'\t')
+    selected=$((1 - selected))
+    ;;
+  esac
+done

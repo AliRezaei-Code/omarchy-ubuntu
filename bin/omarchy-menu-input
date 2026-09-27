@@ -29,6 +29,27 @@ while (( $# > 0 )); do
   shift
 done
 
+# The shell draws the prompt; when it is not running there is nobody to draw
+# it and the handshake below would spin on a done file that never appears.
+# Probe the same way bin/omarchy-restart-shell does before committing to that
+# wait, and hand the prompt to the terminal input instead. The prompt becomes
+# the picker's header rather than a title bar, and --width has nothing to
+# apply to in a plain line editor, so both of those are given up here.
+if ! omarchy-shell shell ping >/dev/null 2>&1; then
+  status=0
+  value=$(omarchy-tui-input --header "$prompt") || status=$?
+  if (( status != 0 )); then
+    exit "$status"
+  fi
+
+  # The shell path treats an empty selection as a cancel (see the -s test
+  # below), and docs/menu.md documents the same for callers, so an empty line
+  # is still a cancel on this path.
+  [[ -n $value ]] || exit 1
+  printf '%s\n' "$value"
+  exit 0
+fi
+
 selection_file=$(mktemp)
 done_file=$(mktemp)
 rm -f "$done_file"

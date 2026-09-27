@@ -170,6 +170,155 @@ for helper in omarchy-cmd-present omarchy-cmd-missing; do
 done
 pass "guard prelude resolves commands as omarchy-cmd-present and omarchy-cmd-missing do"
 
+# --- the deb branch -------------------------------------------------------
+#
+# The batch picks its package manager at runtime, and the `backend` argument is
+# how a test pins that choice without a live machine. A stub dpkg-query answers
+# the two questions the deb snapshot asks: what is installed, and whether one
+# particular package is.
+cat >"$stub_dir/dpkg-query" <<'STUB'
+#!/bin/bash
+installed=" bash gvim neovim "
+
+# The snapshot asks for every installed name in one call; a name query asks
+# about one package after `--` and is answered with the status alone.
+list=0
+for arg in "$@"; do
+  case "$arg" in
+  *'${binary:Package}'*) list=1 ;;
+  esac
+done
+
+if (( list == 1 )); then
+  printf '%s\n' $installed
+  exit 0
+fi
+
+for want in "$@"; do
+  case "$want" in
+  -*) continue ;;
+  *)
+    if [[ " $installed " == *" $want "* ]]; then
+      printf 'ii \n'
+      exit 0
+    fi
+    printf 'rc \n'
+    exit 1
+    ;;
+  esac
+done
+
+exit 0
+STUB
+chmod +x "$stub_dir/dpkg-query"
+
+# `bat` reads as removed-but-not-purged, which dpkg still lists and a reader
+# has to know is not installed.
+deb_prelude=$(node -e '
+  const path = require("path")
+  const menu = require(path.join(process.env.ROOT, "shell/plugins/menu/MenuModel.js"))
+  process.stdout.write(menu.guardScript({ probe: { id: "probe", when: "true" } }, "deb"))
+' | command grep -v '^if {')
+
+deb_helper() {
+  local helper="$1"
+  shift
+
+  PATH="$stub_dir:$PATH" OMARCHY_PKG_BACKEND=deb OMARCHY_PATH="$ROOT" \
+    "$ROOT/bin/$helper" "$@" >/dev/null 2>&1
+}
+
+deb_shadowed() {
+  local helper="$1"
+  shift
+
+  PATH="$stub_dir:$PATH" OMARCHY_PATH="$ROOT" \
+    bash -c "$deb_prelude"$'\n'"$helper \"\$@\"" "$helper" "$@" >/dev/null 2>&1
+}
+
+assert_deb_agrees() {
+  local description="$1" helper="$2"
+  shift 2
+
+  local real=0 shadowed=0
+  deb_helper "$helper" "$@" || real=$?
+  deb_shadowed "$helper" "$@" || shadowed=$?
+  ((real == shadowed)) || fail "$description" "$helper $*: real=$real shadowed=$shadowed"
+}
+
+# Installed, not installed, several, and the empty case the pair is documented
+# to agree on: present is true of nothing, missing is not.
+deb_cases=("neovim" "bat" "absent" "neovim bat" "bash neovim" "")
+for helper in omarchy-pkg-present omarchy-pkg-missing; do
+  for case in "${deb_cases[@]}"; do
+    read -r -a argv <<<"$case"
+    assert_deb_agrees "guard prelude resolves packages as dpkg does" "$helper" "${argv[@]}"
+  done
+done
+pass "guard prelude resolves packages as dpkg does"
+
+# The real commands are what the batch stands in for, so the answers have to
+# be the answers, not merely the same on both sides of a stub.
+deb_helper omarchy-pkg-present neovim ||
+  fail "an ii status reads as present on the deb backend"
+if deb_helper omarchy-pkg-present bat; then
+  fail "an rc status does not read as present"
+fi
+deb_helper omarchy-pkg-missing bat ||
+  fail "an rc status reads as missing on the deb backend"
+if deb_helper omarchy-pkg-missing neovim; then
+  fail "an ii status does not read as missing"
+fi
+pass "the deb backend reads ii as present and rc as missing"
+
+deb_helper omarchy-pkg-present ||
+  fail "present of no packages is true on the deb backend"
+if deb_helper omarchy-pkg-missing; then
+  fail "missing of no packages is false on the deb backend"
+fi
+pass "the deb backend agrees with the documented empty case"
+
+# The shadow reads the same name map the real commands do. Without that, a
+# guard written against `nvim` would hear "absent" from the batch and "present"
+# from the command it stands in for -- the two front ends disagreeing about
+# the same row, which is the one thing they must never do.
+deb_helper omarchy-pkg-present nvim ||
+  fail "the real command resolves a renamed package"
+assert_deb_agrees "guard prelude resolves renamed packages" omarchy-pkg-present nvim
+if deb_shadowed omarchy-pkg-present nvim; then
+  pass "guard prelude resolves renamed packages the same way"
+else
+  fail "guard prelude resolves renamed packages the same way" \
+    "the batch read nvim as absent while the command read it as present"
+fi
+
+# A declared-unsupported name has no Ubuntu equivalent, so it is absent on both
+# sides -- and the row that asks about it stays visible rather than vanishing.
+if deb_helper omarchy-pkg-present expac; then
+  fail "a package with no Ubuntu equivalent is not present on deb"
+fi
+assert_deb_agrees "guard prelude agrees about unsupported packages" omarchy-pkg-present expac
+pass "a package with no Ubuntu equivalent is absent on both sides"
+
+# The default (no backend argument) is what the QML call site uses, and it has
+# to choose for itself.
+runtime_prelude=$(node -e '
+  const path = require("path")
+  const menu = require(path.join(process.env.ROOT, "shell/plugins/menu/MenuModel.js"))
+  process.stdout.write(menu.guardScript({ probe: { id: "probe", when: "true" } }))
+' | command grep -v '^if {')
+
+case "$runtime_prelude" in
+*"command -v pacman"*) ;;
+*) fail "the default guard script asks the machine which package manager it has" ;;
+esac
+pass "the default guard script asks the machine which package manager it has"
+
+runtime_result=$(PATH="$stub_dir:$PATH" OMARCHY_PATH="$ROOT" bash -c "$runtime_prelude"$'\n'"omarchy-pkg-present neovim; echo $?")
+[[ $runtime_result == 0 ]] ||
+  fail "the default guard script answers from dpkg when there is no pacman" "$runtime_result"
+pass "the default guard script answers from dpkg when there is no pacman"
+
 # A reader is replaced by what it printed, which has to compare identically to
 # the substitution it stood in for -- including the trailing newline $() drops.
 reader_script=$(node -e '

@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:group=dashboard
+# omarchy:name=
+# omarchy:summary=Launch the Omarchy dashboard (graphical app, falling back to the TUI)
+
+# The dashboard has two front ends and one model. The GTK app is what a user
+# with a desktop session wants, and the terminal UI is what every other machine
+# gets -- a container, a tty, a box with no GTK typelib. Choosing here rather
+# than in a launcher means neither surface has to know the other exists, and a
+# user whose graphical app cannot start still gets a working menu instead of an
+# error.
+#
+#   omarchy dashboard          the app when there is somewhere to draw it
+#   omarchy dashboard app      force the graphical app
+#   omarchy dashboard tui      force the terminal UI
+
+set -euo pipefail
+
+omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
+omarchy_path=${omarchy_path%/}
+export PATH="$omarchy_path/bin:$PATH"
+
+surface="${1:-}"
+if (( $# > 0 )); then
+  shift
+fi
+
+case "$surface" in
+app)
+  exec omarchy-dashboard-app "$@"
+  ;;
+tui)
+  exec omarchy-dashboard-tui "$@"
+  ;;
+"")
+  # A window needs somewhere to draw. Without a terminal on stdout there is
+  # nothing to fall back to either, so the app is the only thing that could
+  # possibly work and trying it is cheaper than explaining that.
+  if [[ -t 1 ]] && omarchy-dashboard-app --available >/dev/null 2>&1; then
+    exec omarchy-dashboard-app "$@"
+  fi
+
+  exec omarchy-dashboard-tui "$@"
+  ;;
+*)
+  echo "Usage: omarchy dashboard [app|tui] [--route=<id>]" >&2
+  exit 2
+  ;;
+esac

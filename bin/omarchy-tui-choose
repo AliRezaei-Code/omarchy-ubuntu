@@ -1,0 +1,383 @@
+#!/bin/bash
+
+# omarchy:summary=Pick rows from a list in the terminal
+# omarchy:group=tui
+# omarchy:name=choose
+# omarchy:args=[--header T] [--maxheight N] [--selected V] [row...]
+# omarchy:examples=printf 'float\ntile\n' | omarchy-tui-choose|omarchy-tui-choose --header "Window style" float tile
+
+# The headless replacement for `gum choose`. Rows are data and keys are keys,
+# so the two never share a file descriptor: rows arrive on stdin when stdin is
+# a pipe and as trailing arguments when stdin is the terminal, while keys
+# always come from the terminal. That is what lets a caller do
+# `some-data | omarchy-tui-choose` and still get keys.
+#
+# Typing filters (a case-insensitive substring match, not a fuzzy matcher),
+# space marks a row, enter accepts every marked row in input order, and esc
+# cancels. With nothing marked, enter accepts the row under the cursor, so a
+# single-choice list is arrows-and-enter the way it is in gum.
+#
+# Exit codes, shared by every omarchy-tui-* primitive:
+#   0   rows were accepted; they are on stdout, one per line
+#   1   the user cancelled; stdout stays empty
+#   2   there is no terminal to read keys from, or to draw on
+#   64  the command line is wrong
+
+set -euo pipefail
+
+header=""
+requested_height=0
+preselected=""
+
+usage() {
+  echo "Usage: omarchy-tui-choose [--header T] [--maxheight N] [--selected V] [row...]" >&2
+}
+
+while (( $# > 0 )); do
+  arg="$1"
+  shift
+  case "$arg" in
+  --header)
+    (( $# > 0 )) || { echo "omarchy-tui-choose: --header requires a value" >&2; exit 64; }
+    header="$1"
+    shift
+    ;;
+  --maxheight | --height)
+    (( $# > 0 )) || { echo "omarchy-tui-choose: $arg requires a value" >&2; exit 64; }
+    requested_height="$1"
+    shift
+    ;;
+  --selected)
+    (( $# > 0 )) || { echo "omarchy-tui-choose: --selected requires a value" >&2; exit 64; }
+    preselected="$1"
+    shift
+    ;;
+  --)
+    break
+    ;;
+  -*)
+    echo "omarchy-tui-choose: unknown option '$arg'" >&2
+    usage
+    exit 64
+    ;;
+  *)
+    # The first operand ends flag parsing; every operand from there on is a
+    # row. The operand was shifted before the case ran, so put it back.
+    set -- "$arg" "$@"
+    break
+    ;;
+  esac
+done
+
+# gum draws on stderr, so a redirected stderr is a list nobody can see.
+# bin/omarchy-remove-ai-perplexity guards its prompt with the same test.
+[[ -t 2 ]] || {
+  echo "omarchy-tui-choose: stderr is not a terminal, so the list would be invisible" >&2
+  exit 2
+}
+
+if [[ -t 0 ]]; then
+  exec 3<&0
+else
+  # ( : <>/dev/tty ) tests openability inside a subshell, where the failure
+  # costs only the subshell; a bare `exec 3</dev/tty` would kill this one.
+  if (: <>/dev/tty) 2>/dev/null; then
+    exec 3<>/dev/tty
+  else
+    echo "omarchy-tui-choose: no terminal to read keys from (stdin is a pipe and /dev/tty is unavailable)" >&2
+    exit 2
+  fi
+fi
+
+tty_saved=$(stty -g <&3 2>/dev/null) || tty_saved=""
+if [[ -n $tty_saved ]]; then
+  restore_tty() {
+    stty "$tty_saved" <&3 2>/dev/null || true
+  }
+  trap restore_tty EXIT
+  # Raw input, because a filter that only updates on enter is not a filter.
+  # OPOST/ONLCR come back because the drawing moves the cursor down a line and
+  # a bare LF would stair-step. ISIG stays off so ctrl-c arrives as a byte this
+  # script can turn into a cancel instead of a signal.
+  stty raw -echo <&3 2>/dev/null || true
+  stty opost onlcr <&3 2>/dev/null || true
+fi
+
+rows=()
+if [[ -t 0 ]]; then
+  rows=("$@")
+else
+  mapfile -t rows
+fi
+
+if (( ${#rows[@]} == 0 )); then
+  echo "omarchy-tui-choose: no rows to choose from (pass them as arguments or on stdin)" >&2
+  exit 64
+fi
+
+row_lower=()
+row_display=()
+marked=()
+for (( index = 0; index < ${#rows[@]}; index++ )); do
+  row="${rows[index]}"
+  row_lower+=("${row,,}")
+  # A tab separates a row's label from its subtext (see bin/omarchy-menu-select).
+  # The value the caller gets back keeps the tab; only the drawing flattens it.
+  row_display+=("${row//$'\t'/  }")
+  if [[ -n $preselected && $row == "$preselected" ]]; then
+    marked+=(1)
+  else
+    marked+=(0)
+  fi
+done
+
+term_size=$(stty size <&3 2>/dev/null) || term_size=""
+term_rows=24
+term_cols=80
+if [[ $term_size =~ ^([0-9]+)[[:space:]]+([0-9]+)$ ]]; then
+  term_rows="${BASH_REMATCH[1]}"
+  term_cols="${BASH_REMATCH[2]}"
+fi
+# A pty nobody sized reports 0 rows and 0 columns, which is not a real window;
+# fall back to a normal one rather than clip every row down to nothing.
+(( term_rows > 6 )) || term_rows=24
+(( term_cols > 0 )) || term_cols=80
+
+# The header, the status line and the scroll position are drawn too, so the
+# list gets whatever is left of the window.
+window=$((term_rows - 4))
+(( window > 3 )) || window=3
+if (( requested_height > 0 && requested_height < window )); then
+  window="$requested_height"
+fi
+(( window > 0 )) || window=1
+
+filter=""
+cursor=0
+top=0
+drawn=0
+visible=()
+selected_total=0
+
+# --selected opens the cursor on the row it named, the way gum does, so a
+# preselected list does not need a second round of arrows to make sense.
+if [[ -n $preselected ]]; then
+  for (( index = 0; index < ${#rows[@]}; index++ )); do
+    if [[ ${rows[index]} == "$preselected" ]]; then
+      cursor="$index"
+      break
+    fi
+  done
+  (( cursor >= window )) && top=$((cursor - window + 1))
+fi
+
+refresh_visible() {
+  local needle="${filter,,}"
+  local i=0
+  visible=()
+  selected_total=0
+  for (( i = 0; i < ${#rows[@]}; i++ )); do
+    (( marked[i] == 1 )) && (( selected_total += 1 ))
+    if [[ -z $needle || ${row_lower[i]} == *"$needle"* ]]; then
+      visible+=("$i")
+    fi
+  done
+}
+
+# A filter that hides the cursor's row leaves it pointing at nothing, and the
+# next keypress would act on whatever landed under it instead.
+clamp_cursor() {
+  if (( ${#visible[@]} == 0 )); then
+    cursor=0
+    top=0
+    return 0
+  fi
+  (( cursor < 0 )) && cursor=0
+  (( cursor >= ${#visible[@]} )) && cursor=$((${#visible[@]} - 1))
+  (( cursor < top )) && top="$cursor"
+  (( cursor >= top + window )) && top=$((cursor - window + 1))
+  return 0
+}
+
+refresh_visible
+clamp_cursor
+
+# Every drawing line goes to stderr: stdout carries the value and nothing
+# else, which is what lets a caller capture the answer with $(...).
+emit() {
+  printf '\r\033[2K%s\n' "${1:0:$((term_cols - 1))}" >&2
+}
+
+draw() {
+  local -a lines=()
+  local i=0
+  local last=0
+  local row_index=0
+  local mark=""
+  local pointer=""
+
+  [[ -n $header ]] && lines+=("$header")
+
+  last=$((${#visible[@]} - 1))
+  if (( last < 0 )); then
+    lines+=("  (no matches)")
+  else
+    for (( i = top; i <= last && i < top + window; i++ )); do
+      row_index="${visible[i]}"
+      mark=" "
+      (( marked[row_index] == 1 )) && mark="x"
+      pointer=" "
+      (( i == cursor )) && pointer=">"
+      lines+=("  $pointer [$mark] ${row_display[row_index]}")
+    done
+  fi
+
+  lines+=("$selected_total selected - type to filter, space to mark, enter to accept, esc to cancel")
+
+  # The first pass has nothing to move up from, so the loop runs over whichever
+  # is longer: the lines just built or the block the last pass left behind.
+  # A shorter block is padded rather than truncated, so a filter that hides
+  # rows does not leave the old ones on screen.
+  (( drawn > 0 )) && printf '\033[%dA' "$drawn" >&2
+
+  if (( ${#lines[@]} > drawn )); then
+    drawn="${#lines[@]}"
+  fi
+  for (( i = 0; i < drawn; i++ )); do
+    if (( i < ${#lines[@]} )); then
+      emit "${lines[i]}"
+    else
+      emit ""
+    fi
+  done
+  return 0
+}
+
+# Collapse the block down to the single line that is left behind.
+finish() {
+  (( drawn > 0 )) && printf '\033[%dA' "$((drawn - 1))" >&2
+  emit "$1"
+  return 0
+}
+
+KEY=""
+KEY_EOF=0
+
+# -N, not -n: -n stops at a delimiter and swallows the newline a canonical
+# terminal hands back for enter, -N hands over the byte itself.
+read_key() {
+  KEY_EOF=0
+  KEY=""
+  local char=""
+  if ! IFS= read -r -s -N 1 char <&3; then
+    KEY_EOF=1
+    return 0
+  fi
+  KEY="$char"
+  # 0x04 is end-of-transmission, which POSIX defines as end of input; the pty
+  # driver behind script(1) uses it to close out a scripted session.
+  [[ $KEY == $'\x04' ]] && KEY_EOF=1
+  return 0
+}
+
+# A bare esc cancels; an esc that starts an arrow sequence moves the cursor.
+# The follow-up reads time out, so a lone esc costs a keystroke's worth of
+# nothing rather than a hang.
+read_key_expanded() {
+  read_key
+  (( KEY_EOF == 1 )) && return 0
+  [[ $KEY == $'\x1b' ]] || return 0
+
+  local bracket=""
+  local tail=""
+  if IFS= read -r -s -N 1 -t 0.05 bracket <&3 2>/dev/null && [[ $bracket == "[" || $bracket == "O" ]]; then
+    if IFS= read -r -s -N 1 -t 0.05 tail <&3 2>/dev/null; then
+      case "$tail" in
+      A) KEY="up" ;;
+      B) KEY="down" ;;
+      C) KEY="right" ;;
+      D) KEY="left" ;;
+      *) KEY="unknown" ;;
+      esac
+    fi
+  fi
+  return 0
+}
+
+while :; do
+  draw
+
+  read_key_expanded
+  if (( KEY_EOF == 1 )); then
+    finish "cancelled"
+    exit 1
+  fi
+
+  case "$KEY" in
+  $'\x1b' | $'\x03')
+    finish "cancelled"
+    exit 1
+    ;;
+  $'\r' | $'\n')
+    chosen="${visible[cursor]:-}"
+    if [[ -n $chosen ]] && (( marked[chosen] == 0 )) && (( selected_total == 0 )); then
+      marked[chosen]=1
+    fi
+    accepted=()
+    for (( index = 0; index < ${#rows[@]}; index++ )); do
+      (( marked[index] == 1 )) && accepted+=("${rows[index]}")
+    done
+    if (( ${#accepted[@]} == 0 )); then
+      finish "cancelled"
+      exit 1
+    fi
+    if (( ${#accepted[@]} > 1 )); then
+      finish "${accepted[0]} and $(( ${#accepted[@]} - 1 )) more"
+    else
+      finish "${accepted[0]}"
+    fi
+    printf '%s\n' "${accepted[@]}"
+    exit 0
+    ;;
+  ' ' | $'\t')
+    chosen="${visible[cursor]:-}"
+    if [[ -n $chosen ]]; then
+      if (( marked[chosen] == 1 )); then
+        marked[chosen]=0
+      else
+        marked[chosen]=1
+      fi
+    fi
+    ;;
+  up)
+    (( cursor -= 1 ))
+    ;;
+  down)
+    (( cursor += 1 ))
+    ;;
+  pageup)
+    (( cursor -= window ))
+    ;;
+  pagedown)
+    (( cursor += window ))
+    ;;
+  home)
+    cursor=0
+    ;;
+  end)
+    cursor=$((${#visible[@]} - 1))
+    ;;
+  $'\x01')
+    filter=""
+    ;;
+  $'\x7f' | $'\b')
+    (( ${#filter} > 0 )) && filter="${filter%?}"
+    ;;
+  *)
+    filter+="$KEY"
+    ;;
+  esac
+
+  refresh_visible
+  clamp_cursor
+done

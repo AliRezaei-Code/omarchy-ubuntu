@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# omarchy:summary=Print the fully-resolved Omarchy menu tree as JSON
+# omarchy:group=menu
+# omarchy:name=snapshot
+# omarchy:args=[--route=<id>] [--providers] [--no-guards] [--pretty]
+# omarchy:examples=omarchy menu snapshot|omarchy menu snapshot --route=style.theme --pretty
+
+# The one machine-readable form of the menu. The GTK dashboard and the terminal
+# dashboard both render it rather than deciding for themselves what is visible,
+# so a row means the same thing in all three surfaces. The model behind it is
+# the same MenuModel.js the Quickshell shell runs, which is what makes that
+# true rather than merely intended.
+
+set -euo pipefail
+
+# Jammy's package is `nodejs` and a lot of PATHs carry only that, so the two
+# names are tried in the order a hand-installed Node appears first.
+node_bin=""
+for candidate in "${OMARCHY_NODE:-}" "$(command -v node 2>/dev/null)" "$(command -v nodejs 2>/dev/null)"; do
+  if [[ -n $candidate && -x $candidate ]]; then
+    node_bin="$candidate"
+    break
+  fi
+done
+
+if [[ -z $node_bin ]]; then
+  echo "omarchy-menu-snapshot: no Node.js runtime found. Install one with: omarchy install node-runtime" >&2
+  exit 1
+fi
+
+omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
+omarchy_path=${omarchy_path%/}
+export OMARCHY_PATH="$omarchy_path"
+
+# Resolved next to this script rather than under OMARCHY_PATH, so a checkout
+# reads the checkout's menu and an installed tree reads its own. OMARCHY_PATH
+# still decides which tree of menu data to read.
+module="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../shell/plugins/menu/MenuSnapshot.js"
+
+if [[ ! -r $module ]]; then
+  echo "omarchy-menu-snapshot: $module is missing; this Omarchy install is incomplete" >&2
+  exit 1
+fi
+
+# The module decides for itself which tree to read: $OMARCHY_PATH when the
+# caller set one, $ROOT when a harness pinned it, and the packaged path
+# otherwise. Arguments pass through untouched.
+exec "$node_bin" "$module" "$@"
