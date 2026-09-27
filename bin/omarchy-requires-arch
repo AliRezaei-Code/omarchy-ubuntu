@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Refuse a feature that needs an Arch-based Omarchy.
+# omarchy:args=<feature>
+# omarchy:hidden=true
+# omarchy:examples=omarchy-requires-arch "AUR packages"
+
+# Parity means the parts of Omarchy that only exist on Arch are *named*, not
+# quietly broken. A command that shells out to pacman on a machine with no
+# pacman fails at a line about a package manager, which tells the user nothing
+# about the thing they asked for; this tells them the thing, and where the
+# boundary is.
+#
+#   omarchy-requires-arch "AUR packages"
+#   omarchy: '<feature>' requires an Arch-based Omarchy system
+#
+# It is a check rather than a hard refusal, so a caller can write
+# `omarchy-requires-arch "…" && exit 1` and a test on Arch sees the same
+# nothing it always saw.
+
+if (( $# == 0 )); then
+  echo "Usage: omarchy-requires-arch <feature>" >&2
+  exit 2
+fi
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/omarchy-pkg-backend"
+
+if [[ $(omarchy_pkg_backend) != "arch" ]]; then
+  printf "omarchy: '%s' requires an Arch-based Omarchy system\n" "$1" >&2
+  exit 1
+fi
+
+exit 0
