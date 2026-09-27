@@ -80,6 +80,42 @@ require_compositor() {
   exit 0
 }
 
+# The package backend is chosen at runtime (Arch stays the default, Ubuntu
+# picks itself up from dpkg), so a check that only makes sense on one of them
+# has to be able to stand down on the other. `auto` is the unset case, and
+# resolves the same way bin/omarchy-pkg-backend does, without depending on it
+# existing: a test that runs before the backend lands still gates correctly.
+active_pkg_backend() {
+  local requested="${OMARCHY_PKG_BACKEND:-auto}"
+
+  if [[ $requested == "auto" ]]; then
+    if [[ -x $ROOT/bin/omarchy-pkg-backend ]]; then
+      requested=$("$ROOT/bin/omarchy-pkg-backend" 2>/dev/null) || return 1
+    elif command -v pacman >/dev/null; then
+      requested="arch"
+    else
+      requested="deb"
+    fi
+  fi
+
+  printf '%s\n' "$requested"
+}
+
+require_backend() {
+  local backend="$1"
+  local description="${2:-$*}"
+  local active
+
+  active=$(active_pkg_backend) || active="unknown"
+
+  if [[ $active == "$backend" ]]; then
+    return 0
+  fi
+
+  skip "backend is $active; skipping $description"
+  exit 0
+}
+
 run_node_test() {
   require_command node
 
