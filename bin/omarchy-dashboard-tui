@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Omarchy dashboard as a full-screen terminal UI
+# omarchy:args=[--route=<id>]
+
+# A terminal UI is the one Omarchy surface that needs neither a compositor nor
+# Quickshell, so on a machine with neither it is the whole dashboard. The two
+# refusals below are the only feedback a user gets before they find that out,
+# and both name the thing to use instead of leaving them at a dead end.
+
+omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
+omarchy_path=${omarchy_path%/}
+
+# Jammy's package is `nodejs` and a lot of PATHs carry only that, so the two
+# names are tried in the order a hand-installed Node appears first.
+node_bin=""
+for candidate in "${OMARCHY_NODE:-}" "$(command -v node 2>/dev/null)" "$(command -v nodejs 2>/dev/null)"; do
+  if [[ -n $candidate && -x $candidate ]]; then
+    node_bin="$candidate"
+    break
+  fi
+done
+
+if [[ -z $node_bin ]]; then
+  echo "omarchy-dashboard-tui: no Node.js runtime found. Install one with: omarchy install node-runtime" >&2
+  exit 1
+fi
+
+# Raw mode and an alternate screen are the whole interface here. Without a
+# terminal on both ends there is nothing to draw into, and the machine-readable
+# output is a real answer rather than a consolation prize.
+if [[ ! -t 0 || ! -t 1 ]]; then
+  echo "omarchy-dashboard-tui: needs an interactive terminal; use 'omarchy menu snapshot' for machine-readable output" >&2
+  exit 2
+fi
+
+export OMARCHY_PATH="$omarchy_path"
+export PATH="$omarchy_path/bin:$PATH"
+
+# The front end is resolved next to this script rather than under
+# OMARCHY_PATH, so a checkout runs the checkout's TUI and an installed tree
+# runs its own. OMARCHY_PATH still decides which `omarchy` answers the menu.
+front_end="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../shell/plugins/menu/DashboardTui.js"
+
+exec "$node_bin" "$front_end" "$@"
