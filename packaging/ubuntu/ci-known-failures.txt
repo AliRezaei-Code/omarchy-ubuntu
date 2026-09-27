@@ -45,6 +45,13 @@ agent-usage-fireworks-scanner
 kitty-config
 system-sleep-ownership-migration
 
+# system-sleep-ownership-migration is here because it fails on every run on a
+# workstation -- this tree's umask there is 0002 -- and on the runner
+# *intermittently*, which no single-run gate can distinguish from a fix. It is
+# listed rather than removed because it fails more often than it passes here,
+# and a build that randomly red for a flaky upstream test teaches people to
+# re-run CI, which is worse than a red build that names its reason.
+
 # --- the machine the runner is --------------------------------------------
 # The tree is not root-owned, so omarchy-plymouth-set refuses to publish.
 plymouth-set
