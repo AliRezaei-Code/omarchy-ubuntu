@@ -167,9 +167,9 @@ else
   # the launch path. gjs or the libadwaita typelib is absent on machines that
   # have not installed them, and that refusal is what makes `omarchy dashboard`
   # choose the terminal UI instead of showing nothing.
-  "$ROOT/bin/omarchy-dashboard-app" --route=style 2>&1 |
-    grep -q 'the graphical dashboard is unavailable on this system' ||
-    fail "omarchy-dashboard-app refuses with its documented message when it cannot start"
+  refusal=$("$ROOT/bin/omarchy-dashboard-app" --route=style 2>&1) || true
+  grep -q 'the graphical dashboard is unavailable on this system' <<<"$refusal" ||
+    fail "omarchy-dashboard-app refuses with its documented message when it cannot start" "said: $refusal"
   pass "omarchy-dashboard-app refuses with its documented message when it cannot start"
 fi
 
