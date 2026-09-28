@@ -29,13 +29,24 @@
 #                           1.6 cannot read a NUL-terminated file losslessly
 #   agent-usage-fireworks   two whole-object comparisons that only differed in
 #                           jq's number formatting: 20 versus 20.0
-#   locate                  ran the AUR installer, which now correctly refuses
 #   neovim-remote-yanks,    tests for migrations that are marked platform=arch
 #   omarchy-kernel,         and so never run on a backend without Arch
 #   kernel-headers
 #   legacy-power-udev       ran the migration without OMARCHY_PATH, so it died
 #                           on an unbound variable instead of on the udev
 #                           logic it meant to test
+#   locate                  ran the AUR installer, which now correctly refuses
+#   kitty-config            a migration calls gum, and the shim only reached
+#                           PATH when installed at /usr/local/bin; the test now
+#                           passes packaging/ubuntu/compat, which is where a
+#                           checkout's gum lives
+#
+#   locate then went again, for a different reason: it drives updatedb with
+#   --config-file and --debug-pruning, and plocate 1.1.15 -- what 22.04 ships
+#   -- has neither, its --help listing --database-root, --output,
+#   --require-visibility and the prune options and stopping there. The flags came
+#   with a later plocate, so the test now stands down rather than failing for a
+#   tool version rather than for the code.
 #
 # Each entry below says why, so a line here is never a mystery. A name is
 # removed the day its cause is fixed, and the build says so if that day has
@@ -47,7 +58,6 @@
 #                   falls back rather than refusing, so the test -- which
 #                   requires the tool -- is what fails.
 #   mise-work-path  mise, which is not in the 22.04 archive
-#   locate          plocate 1.1.15, which is what 22.04 ships. The test drives
 #                   updatedb with --config-file and --debug-pruning, and
 #                   `updatedb.plocate --help` on the jammy package lists
 #                   neither: it has --database-root, --output,
@@ -55,7 +65,6 @@
 #                   else. The flags arrived in a later plocate.
 bar-text-color
 mise-work-path
-locate
 #   keybindings-menu  xkbcli, which is in no jammy archive package. A
 #                   workstation often has it from somewhere else -- this one
 #                   does, from a conda tree -- which is exactly the kind of

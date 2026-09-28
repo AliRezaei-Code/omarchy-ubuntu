@@ -8,6 +8,17 @@ require_command python3
 require_command updatedb
 require_command plocate
 
+# The test drives updatedb with --config-file and --debug-pruning. plocate
+# 1.1.15, which is what Ubuntu 22.04 ships, has neither: `updatedb.plocate
+# --help` lists --database-root, --output, --require-visibility and the prune
+# options and stops there. The flags arrived in a later plocate, so this is a
+# property of the tool rather than of the code under test -- and a stand-down
+# that says so is the honest answer, where a failure is a false alarm.
+if ! updatedb --help 2>&1 | grep -q -- '--config-file'; then
+  skip "this plocate's updatedb has no --config-file; the pruning options it does not have came later"
+  exit 0
+fi
+
 python3 - <<'PY'
 import os
 from pathlib import Path
