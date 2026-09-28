@@ -51,6 +51,12 @@
 bar-text-color
 mise-work-path
 locate
+#   keybindings-menu  xkbcli, which is in no jammy archive package. A
+#                   workstation often has it from somewhere else -- this one
+#                   does, from a conda tree -- which is exactly the kind of
+#                   difference a baseline taken on a developer's machine
+#                   gets wrong.
+keybindings-menu
 
 # --- a checkout is not a packaged install ----------------------------------
 # A migration calls gum, and the shim only reaches PATH by being installed at
