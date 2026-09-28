@@ -89,7 +89,17 @@ jobs:
       - name: The package is actually installable
         run: |
           set -euo pipefail
-          if ! apt-get install -s --no-install-recommends "$(ls build/deb/*.deb)"; then
+          # Absolute, and globbed before quoting: apt reads a bare
+          # build/deb/... as the name of a package rather than as a file to
+          # install, and a glob inside quotes never expands.
+          shopt -s nullglob
+          debs=(build/deb/*.deb)
+          shopt -u nullglob
+          if (( ${#debs[@]} == 0 )); then
+            echo "make deb produced nothing" >&2
+            exit 1
+          fi
+          if ! apt-get install -s --no-install-recommends "$(pwd)/${debs[0]}"; then
             echo >&2
             echo "apt cannot resolve this package. Map or declare every" >&2
             echo "Arch name in install/pkg-map.conf first." >&2
