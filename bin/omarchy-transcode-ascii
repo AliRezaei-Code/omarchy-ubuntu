@@ -8,6 +8,14 @@
 
 set -o pipefail
 
+
+# Written against ImageMagick 7. Ubuntu 22.04 packages ImageMagick 6, which
+# has no `magick` at all, so without this the command dies partway through
+# with a bare "command not found" that says nothing about the image the
+# caller handed it.
+"$(dirname -- "${BASH_SOURCE[0]}")/omarchy-requires-tool" magick \
+  "ImageMagick 7 is not in the Ubuntu 22.04 archive" && exit 1
+
 usage() {
   cat <<'EOF'
 Usage: omarchy-transcode-ascii <input-image.svg|png> <output-path> [options]

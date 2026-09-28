@@ -355,20 +355,25 @@ assert_ambiguous_utf16_falls_back "clipboard capture leaves BOM-less UTF-16 punc
 assert_ambiguous_utf16_falls_back "clipboard capture leaves BOM-less UTF-16 CJK undecoded" '日本'
 assert_ambiguous_utf16_falls_back "clipboard capture leaves BOM-less UTF-16 surrogate pairs undecoded" '😀'
 
+# jq 1.6 -- the version Ubuntu 22.04 ships -- cannot read a NUL-terminated
+# file losslessly: `jq -Rs` splits on NUL and drops the final empty field, so
+# computing the expectation from the same bytes with the same tool quietly
+# loses a byte the capture is supposed to preserve. These three expectations are
+# therefore written out, and the capture is what they are checked against.
 printf 'foo\0bar\0' >"$TMPDIR/nul-separated-utf8"
-expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/nul-separated-utf8")
+expected='{"type":"text","text":"foo\u0000bar\u0000"}'
 capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text <"$TMPDIR/nul-separated-utf8")
 [[ $capture_output == "$expected" ]] || fail "clipboard capture leaves sparse NUL-separated UTF-8 undecoded" "expected: $expected\nactual: $capture_output"
 pass "clipboard capture leaves sparse NUL-separated UTF-8 undecoded"
 
 printf 'Hello\0\0\0\0\0\0\0\0\0\0\0' >"$TMPDIR/nul-padded-utf8"
-expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/nul-padded-utf8")
+expected='{"type":"text","text":"Hello\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"}'
 capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text <"$TMPDIR/nul-padded-utf8")
 [[ $capture_output == "$expected" ]] || fail "clipboard capture leaves NUL-padded UTF-8 undecoded" "expected: $expected\nactual: $capture_output"
 pass "clipboard capture leaves NUL-padded UTF-8 undecoded"
 
 printf '\001\000\001\000\001\000\001\000' >"$TMPDIR/ambiguous-control-text"
-expected=$(jq -cRs '{type:"text", text:.}' <"$TMPDIR/ambiguous-control-text")
+expected='{"type":"text","text":"\u0001\u0000\u0001\u0000\u0001\u0000\u0001\u0000"}'
 capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text <"$TMPDIR/ambiguous-control-text")
 [[ $capture_output == "$expected" ]] || fail "clipboard capture leaves endian-ambiguous control text undecoded" "expected: $expected\nactual: $capture_output"
 pass "clipboard capture leaves endian-ambiguous control text undecoded"

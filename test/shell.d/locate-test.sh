@@ -51,8 +51,13 @@ with tempfile.TemporaryDirectory(prefix="omarchy-locate-") as scratch:
     path.chmod(0o755)
   calls = scratch / "updatedb-arguments"
   env = dict(os.environ, PATH=str(fake_bin) + ":" + os.environ["PATH"], TEST_CALLS=str(calls))
+  # The AUR installer is an Arch-only surface -- on a backend with no AUR it
+  # refuses, which is the behaviour docs/file-layout.md declares. This loop
+  # stubs yay, so it is deliberately exercising the Arch path and says so,
+  # rather than having the refusal count as a failure.
   for relative in ("install/post-install/localdb.sh", "bin/omarchy-pkg-aur-install"):
-    subprocess.run(["bash", "-euo", "pipefail", str(root / relative)], env=env, check=True)
+    subprocess.run(["bash", "-euo", "pipefail", str(root / relative)],
+                   env=dict(env, OMARCHY_PKG_BACKEND="arch"), check=True)
     check(calls.read_text().splitlines() == options,
           relative + " passes the scheduled service options directly")
     calls.unlink()

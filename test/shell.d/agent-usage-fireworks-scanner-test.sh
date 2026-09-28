@@ -223,12 +223,20 @@ pass "Fireworks collector follows billingUsage continuation tokens"
   fail "Fireworks collector requests local-midnight windows in UTC" "$result"
 pass "Fireworks collector requests local-midnight windows in UTC"
 
-[[ $(jq -c '.record.balance' <<<"$result") == '{"remaining":11.4,"funded":20.0,"spent":8.6,"currency":"USD","estimated":true}' ]] ||
-  fail "Fireworks collector estimates the balance from configured funding" "$result"
+# Compared field by field, not as re-serialised text: jq 1.6 -- what Ubuntu
+# 22.04 ships -- prints 20 where newer jq prints 20.0, so a whole-object
+# comparison fails on a formatting difference with every value correct.
+balance=$(jq -c '.record.balance' <<<"$result")
+jq -e '.remaining == 11.4 and .funded == 20 and .spent == 8.6 and .currency == "USD" and .estimated == true' \
+  <<<"$balance" >/dev/null ||
+  fail "Fireworks collector estimates the balance from configured funding" "$balance"
 pass "Fireworks collector estimates the balance from configured funding"
 
-[[ $(jq -c '.liveBalance' <<<"$result") == '{"remaining":12.5,"funded":20.0,"spent":7.5,"currency":"USD","estimated":false}' ]] ||
-  fail "Fireworks collector prefers the live getBalance ledger when the key can read it" "$result"
+# Field by field for the same reason as the estimated balance above.
+live_balance=$(jq -c '.liveBalance' <<<"$result")
+jq -e '.remaining == 12.5 and .funded == 20 and .spent == 7.5 and .currency == "USD" and .estimated == false' \
+  <<<"$live_balance" >/dev/null ||
+  fail "Fireworks collector prefers the live getBalance ledger when the key can read it" "$live_balance"
 pass "Fireworks collector prefers the live getBalance ledger when the key can read it"
 
 [[ $(jq -r '.balanceFailurePreservesTokens' <<<"$result") == "true" ]] ||

@@ -11,6 +11,14 @@ set -euo pipefail
 # fixed destination atomically. The caller opens the selected logo before sudo,
 # so the privileged process never resolves a user-controlled input path.
 
+
+# Written against ImageMagick 7. Ubuntu 22.04 packages ImageMagick 6, which
+# has no `magick` at all, so without this the command dies partway through
+# with a bare "command not found" that says nothing about the image the
+# caller handed it.
+"$(dirname -- "${BASH_SOURCE[0]}")/omarchy-requires-tool" magick \
+  "ImageMagick 7 is not in the Ubuntu 22.04 archive" && exit 1
+
 usage() {
   echo "Usage: omarchy-plymouth-set <background-hex> <text-hex> <path-to-logo.png>" >&2
   exit 1

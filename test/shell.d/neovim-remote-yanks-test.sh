@@ -2,6 +2,12 @@
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# vercmp is an Arch pacman utility is marked platform=arch, so omarchy-migrate never runs it on a
+# backend without Arch. This test runs the script directly, which is how
+# the suite tests migrations, and so it has to stand down too -- otherwise
+# it fails on a tool that simply is not there and never was going to be.
+require_backend arch "vercmp is an Arch pacman utility"
+
 test_home=$(mktemp -d)
 trap 'rm -rf "$test_home"' EXIT
 provider="$test_home/.config/nvim/lua/config/remote_clipboard.lua"

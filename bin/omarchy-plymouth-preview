@@ -7,6 +7,14 @@
 # Render a Plymouth login-screen preview PNG by compositing the staged omarchy
 # theme assets (recolored with the given text color) onto the background.
 
+
+# Written against ImageMagick 7. Ubuntu 22.04 packages ImageMagick 6, which
+# has no `magick` at all, so without this the command dies partway through
+# with a bare "command not found" that says nothing about the image the
+# caller handed it.
+"$(dirname -- "${BASH_SOURCE[0]}")/omarchy-requires-tool" magick \
+  "ImageMagick 7 is not in the Ubuntu 22.04 archive" && exit 1
+
 if (( $# != 4 )); then
   echo "Usage: omarchy-plymouth-preview <background-hex> <text-hex> <path-to-logo.png> <output-path>" >&2
   exit 1
