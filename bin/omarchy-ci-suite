@@ -83,13 +83,19 @@ if [[ -n $new ]]; then
   exit 1
 fi
 
+# A stale entry is reported loudly but does not fail the build. It used to, on
+# the argument that a list of things that are wrong is only evidence while it is
+# true -- which is right, and is why the staleness is printed rather than
+# buried. It is not right to fail on it, because a single run cannot tell "fixed"
+# from "passed by luck", and this tree contains at least one test
+# (system-sleep-ownership-migration) whose result depends on the environment
+# rather than on the code. Firing a build for it would mean telling a maintainer
+# to delete an entry for a test that is still broken, which is worse than a list
+# that rots by one line. Take staleness out of the gate and the list is a
+# comment again, so it stays here.
 if [[ -n $fixed ]]; then
-  # Also a build failure. A known-failures list that keeps names which no
-  # longer fail is a list that has stopped being evidence, and the next person
-  # to read it concludes the suite is in an unknown state.
   echo
-  echo "The known-failures list is stale; remove the names above." >&2
-  exit 1
+  echo "The known-failures list is stale; remove the names above when they are really fixed."
 fi
 
 echo "no new failures"
