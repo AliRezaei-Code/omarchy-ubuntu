@@ -71,19 +71,11 @@ parse_keycodes() {
 build_lua_bind_cache() {
   local modmask description key dispatcher arg cache_key
 
-  # PATH first, then next to this script. PATH first because a caller or a
-  # test that provides its own omarchy-cmd-present means it, and resolving the
-  # sibling unconditionally would step over that. The fallback is the part that
-  # matters in a checkout: run by absolute path with bin/ off PATH, a bare name
-  # silently returned 0 and the whole keybind scan was skipped -- an empty list
-  # that looks like a machine with no keybindings rather than a command that
-  # could not find its helper.
-  local cmd_present="omarchy-cmd-present"
-  if ! command -v "$cmd_present" >/dev/null 2>&1; then
-    cmd_present="${BASH_SOURCE[0]%/*}/omarchy-cmd-present"
-  fi
-
-  "$cmd_present" lua || return 0
+  # Resolved next to this script. Run by absolute path with bin/ off PATH -- which
+  # is how the shell tests invoke it -- a bare name silently returned 0 and the
+  # whole keybind scan was skipped: an empty list that looks like a machine with
+  # no keybindings rather than a command that could not find its helper.
+  "${BASH_SOURCE[0]%/*}/omarchy-cmd-present" lua || return 0
 
   while IFS=$'\t' read -r modmask description key dispatcher arg; do
     [[ -z $modmask || -z $description || -z $key ]] && continue
