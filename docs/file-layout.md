@@ -161,6 +161,24 @@ without a file conflict. Instead their sources (under `etc/` in the repo;
 Tradeoff: user edits to those files get clobbered on every `omarchy-settings`
 upgrade. This is documented in the PKGBUILD.
 
+## A tool the target release does not ship
+
+`bin/omarchy-requires-arch` names the Arch-only half of the port.
+`bin/omarchy-requires-tool` names the other half: a tool Ubuntu 22.04
+genuinely does not have, which has nothing to do with Arch and would be
+wrong to describe as Arch-only.
+
+ImageMagick is the case that matters. Five commands are written against
+ImageMagick 7's `magick` -- `omarchy-transcode`, `omarchy-transcode-ascii`,
+`omarchy-plymouth-set` and `omarchy-plymouth-preview` guard on it, and
+`omarchy-bar-text-color` treats it as an enhancement and falls back.
+Ubuntu 22.04 packages ImageMagick 6, which provides `convert` and no
+`magick` at all, so the deb depends on `imagemagick` and those commands
+stop with `omarchy: 'magick' is not available: ImageMagick 7 is not in
+the Ubuntu 22.04 archive` rather than dying partway through with a bare
+`command not found` that says nothing about the image the caller handed
+it.
+
 ## The unsupported surface
 
 This tree runs on Ubuntu 22.04 (jammy) as well as Arch. `bin/omarchy-pkg-backend` picks pacman or apt at runtime and Arch is still the default, so the paths in the build-time map above are all live on an Arch install and inert on a deb one; the installed layout itself does not change, because the deb puts the same tree at `/usr/share/omarchy` with `/usr/bin/omarchy-*` binaries, which is the packaged contract `default/bash/env-bootstrap` already encodes. Parity here does not mean pretending. It means an Arch-only command says which thing it belongs to, rather than failing three frames deep inside a package manager that isn't there. The generic form of that is `bin/omarchy-requires-arch`, which prints `omarchy: '<feature>' requires an Arch-based Omarchy system` to stderr and exits 1.

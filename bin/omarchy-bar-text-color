@@ -72,7 +72,10 @@ valid_hex "$text_color" || fallback
 valid_hex "$background_color" || fallback
 [[ $position =~ ^(top|bottom|left|right)$ ]] || fallback
 [[ $bar_size =~ ^[0-9]+$ ]] || fallback
-omarchy-cmd-present magick || fallback
+# An enhancement, not a requirement: without ImageMagick 7 -- which Ubuntu
+# 22.04 does not package -- this falls back rather than refusing. Resolved
+# next to this script so a checkout run by absolute path finds the helper.
+"${BASH_SOURCE[0]%/*}/omarchy-cmd-present" magick || fallback
 
 if [[ -z $background_path ]]; then
   background_path=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null || true)

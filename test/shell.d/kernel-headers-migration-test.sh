@@ -3,6 +3,12 @@
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# the Arch kernel headers is marked platform=arch, so omarchy-migrate never runs it on a
+# backend without Arch. This test runs the script directly, which is how
+# the suite tests migrations, and so it has to stand down too -- otherwise
+# it fails on a tool that simply is not there and never was going to be.
+require_backend arch "the Arch kernel headers"
+
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
 mkdir -p "$tmp_dir/bin"

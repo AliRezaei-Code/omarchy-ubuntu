@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Refuse a feature that needs a tool this system does not have.
+# omarchy:args=<tool> <explanation>
+# omarchy:hidden=true
+# omarchy:examples=omarchy-requires-tool magick "ImageMagick 7 is not in the Ubuntu 22.04 archive"
+
+# `omarchy-requires-arch` names the Arch-only half of the port. This names the
+# other half: tools the target release genuinely does not ship, which have
+# nothing to do with Arch and would be wrong to describe as Arch-only.
+#
+# ImageMagick is the case that matters. Five commands are written against
+# ImageMagick 7's `magick`; Ubuntu 22.04 packages ImageMagick 6, which provides
+# `convert` and no `magick` at all. A command that shells out to it fails with
+# `magick: command not found`, which tells the user nothing about the thing
+# they asked for and nothing about what to do instead.
+#
+#   omarchy-requires-tool magick "ImageMagick 7 is not in the Ubuntu 22.04 archive"
+#   omarchy: 'magick' is not available: ImageMagick 7 is not in the Ubuntu 22.04 archive
+#
+# A check rather than a hard refusal, so a caller writes
+# `omarchy-requires-tool magick "…" && exit 1` and a machine that has it sees
+# the same nothing it always saw.
+
+if (( $# < 2 )); then
+  echo "Usage: omarchy-requires-tool <tool> <explanation>" >&2
+  exit 2
+fi
+
+tool="$1"
+shift
+reason="$*"
+
+# Run, not sourced: a sourced script inherits the caller's positional
+# parameters, and omarchy-cmd-present loops over "$@" to check its arguments.
+# Sourcing it here would test the explanation words instead of the tool.
+self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+if ! "$self_dir/omarchy-cmd-present" "$tool"; then
+  printf "omarchy: '%s' is not available: %s\n" "$tool" "$reason" >&2
+  exit 1
+fi
+
+exit 0

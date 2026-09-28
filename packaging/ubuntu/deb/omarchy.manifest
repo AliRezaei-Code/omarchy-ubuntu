@@ -47,6 +47,7 @@
 /usr/bin/omarchy-channel-set
 /usr/bin/omarchy-chromium-copy-url-host
 /usr/bin/omarchy-chromium-ytdlp-host
+/usr/bin/omarchy-ci-suite
 /usr/bin/omarchy-clipboard-open
 /usr/bin/omarchy-clipboard-paste-file
 /usr/bin/omarchy-clipboard-paste-text
@@ -330,6 +331,7 @@
 /usr/bin/omarchy-remove-service-sunshine
 /usr/bin/omarchy-remove-service-tailscale
 /usr/bin/omarchy-requires-arch
+/usr/bin/omarchy-requires-tool
 /usr/bin/omarchy-restart-app
 /usr/bin/omarchy-restart-audio
 /usr/bin/omarchy-restart-bluetooth
@@ -525,6 +527,7 @@
 /usr/share/omarchy/bin/omarchy-channel-set
 /usr/share/omarchy/bin/omarchy-chromium-copy-url-host
 /usr/share/omarchy/bin/omarchy-chromium-ytdlp-host
+/usr/share/omarchy/bin/omarchy-ci-suite
 /usr/share/omarchy/bin/omarchy-clipboard-open
 /usr/share/omarchy/bin/omarchy-clipboard-paste-file
 /usr/share/omarchy/bin/omarchy-clipboard-paste-text
@@ -808,6 +811,7 @@
 /usr/share/omarchy/bin/omarchy-remove-service-sunshine
 /usr/share/omarchy/bin/omarchy-remove-service-tailscale
 /usr/share/omarchy/bin/omarchy-requires-arch
+/usr/share/omarchy/bin/omarchy-requires-tool
 /usr/share/omarchy/bin/omarchy-restart-app
 /usr/share/omarchy/bin/omarchy-restart-audio
 /usr/share/omarchy/bin/omarchy-restart-bluetooth
@@ -953,6 +957,7 @@
 /usr/share/omarchy/bin/omarchy-windows-key
 /usr/share/omarchy/bin/omarchy-windows-vm
 /usr/share/omarchy/bin/__pycache__/omarchy-agent-usage-claudecpython-39.pyc
+/usr/share/omarchy/bin/__pycache__/omarchy-agent-usage-fireworkscpython-310.pyc
 /usr/share/omarchy/bin/__pycache__/omarchy-agent-usage-fireworkscpython-39.pyc
 /usr/share/omarchy/config/alacritty/alacritty.toml
 /usr/share/omarchy/config/autostart/limine-snapper-notify.desktop

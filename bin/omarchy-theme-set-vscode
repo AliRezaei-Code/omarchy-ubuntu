@@ -18,9 +18,15 @@ register_generated_extension() {
   obsolete_file="$ext_base/.obsolete"
   relative=$(basename "$ext_dir")
 
+  # Every obsolete marker this extension owns, not just the current one. The
+  # version is derived from the palette's checksum, so every theme change
+  # produces a new version and VS Code marks the previous one obsolete --
+  # clearing only the current key left one stale marker behind per theme change,
+  # forever.
   if [[ -f $obsolete_file ]]; then
     tmp=$(mktemp)
-    if jq --arg key "$GENERATED_EXTENSION_ID-$GENERATED_EXTENSION_VERSION" 'del(.[$key])' "$obsolete_file" >"$tmp"; then
+    if jq --arg prefix "$GENERATED_EXTENSION_ID-" \
+      'with_entries(select(.key | startswith($prefix) | not))' "$obsolete_file" >"$tmp"; then
       mv "$tmp" "$obsolete_file"
       [[ $(jq 'length' "$obsolete_file") == "0" ]] && rm -f "$obsolete_file"
     else

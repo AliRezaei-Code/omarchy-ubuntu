@@ -6,71 +6,77 @@
 # failures is permanently red -- and a permanently red build is
 # indistinguishable from a broken one, which trains everyone to ignore it.
 # `bin/omarchy-ci-suite` compares a run against this list in both directions: a
-# new failure fails the build, and so does a name here that no longer fails,
-# because a list of things that are wrong is only evidence while it is true.
+# new failure fails the build. A name here that no longer fails is reported
+# loudly but does not fail it, because one run cannot tell "fixed" from "passed
+# by luck" and this tree has a test whose result depends on the environment.
 #
 # This is the ubuntu-22.04 runner's baseline, taken from an actual run rather
 # than from a developer machine. They are not the same machine, and getting
 # that wrong is what the first CI run did: it listed eleven files that pass on
 # the runner, and the gate correctly reported the list as stale.
 #
-# Each entry says why, so a line here is never a mystery. A name is removed the
-# day its cause is fixed, and the build says so if that day has already passed.
+# The port has taken eight entries off this list since the first run. They were
+# not all environment gaps:
+#
+#   test/cli                the vscode theme test still asserted a symlink the
+#                           implementation deliberately stopped writing, and
+#                           the obsolete-marker prune only cleared the current
+#                           version's key, leaving one per theme change
+#   notification-send       --exec argv was split with split("\u0000")[:-1],
+#                           which jq 1.6 -- what 22.04 ships -- resolves to
+#                           dropping the caller's LAST argument
+#   clipboard               the expectation was built with jq -Rs, which on
+#                           1.6 cannot read a NUL-terminated file losslessly
+#   agent-usage-fireworks   two whole-object comparisons that only differed in
+#                           jq's number formatting: 20 versus 20.0
+#   locate                  ran the AUR installer, which now correctly refuses
+#   neovim-remote-yanks,    tests for migrations that are marked platform=arch
+#   omarchy-kernel,         and so never run on a backend without Arch
+#   kernel-headers
+#   legacy-power-udev       ran the migration without OMARCHY_PATH, so it died
+#                           on an unbound variable instead of on the udev
+#                           logic it meant to test
+#
+# Each entry below says why, so a line here is never a mystery. A name is
+# removed the day its cause is fixed, and the build says so if that day has
+# already passed.
 
-# --- upstream's own drift, and the port does not own it -------------------
-# bin/omarchy-theme-set-vscode writes a real file on purpose, because the
-# _watch watcher needs a same-inode rewrite, and test/cli still asserts a
-# symlink.
-cli
-
-# --- the tool the runner does not have -------------------------------------
-#   bar-text-color  magick
-#   mise-work-path  mise
-#   locate          plocate
-#   keybindings-menu  lua behaviour, reached through a helper that is not
-#                     installed here
+# --- the tool the target release does not ship -----------------------------
+#   bar-text-color  magick, i.e. ImageMagick 7. Ubuntu 22.04 packages
+#                   ImageMagick 6, which has no `magick` at all. The command
+#                   falls back rather than refusing, so the test -- which
+#                   requires the tool -- is what fails.
+#   mise-work-path  mise, which is not in the 22.04 archive
+#   locate          plocate's updatedb. The test drives it with --config-file
+#                   and --debug-pruning, which 22.04's plocate does not have.
 bar-text-color
 mise-work-path
 locate
+#   keybindings-menu  xkbcli, which is in no jammy archive package. A
+#                   workstation often has it from somewhere else -- this one
+#                   does, from a conda tree -- which is exactly the kind of
+#                   difference a baseline taken on a developer's machine
+#                   gets wrong.
 keybindings-menu
 
-# --- content assertions that do not hold on this platform ------------------
-#   clipboard, notification-send, agent-usage-fireworks-scanner
-# kitty-config fails because a migration calls gum, and the shim only reaches
-# PATH by being installed at /usr/local/bin -- the right shape for a checkout
-# and the wrong one here.
-clipboard
-notification-send
-agent-usage-fireworks-scanner
+# --- a checkout is not a packaged install ----------------------------------
+# A migration calls gum, and the shim only reaches PATH by being installed at
+# /usr/local/bin -- the right shape for a checkout and the wrong one here.
 kitty-config
-system-sleep-ownership-migration
-
-# system-sleep-ownership-migration is here because it fails on every run on a
-# workstation -- this tree's umask there is 0002 -- and on the runner
-# *intermittently*, which no single-run gate can distinguish from a fix. It is
-# listed rather than removed because it fails more often than it passes here,
-# and a build that randomly red for a flaky upstream test teaches people to
-# re-run CI, which is worse than a red build that names its reason.
 
 # --- the machine the runner is --------------------------------------------
-# The tree is not root-owned, so omarchy-plymouth-set refuses to publish.
+# The tree is not root-owned, so omarchy-plymouth-set refuses to publish. It
+# now stops even earlier, on the ImageMagick 7 guard, since 22.04 has no
+# ImageMagick 7; either way the run needs something the runner does not have.
 plymouth-set
 # Hardware the runner does not have.
 hw-hybrid-gpu
 
-# --- Arch-only, and the port declares them unsupported ---------------------
-# vercmp is an Arch pacman utility; these are the Arch kernel and the legacy
-# udev rules the port names in docs/file-layout.md.
-neovim-remote-yanks
-kernel-headers-migration
-omarchy-kernel-migration
-legacy-power-udev-rules-migration
-
-# --- a workstation, not the runner -----------------------------------------
-# This tree's umask on a developer box is 0002, so migration files are written
-# 0664 and the tests that require 0644 fail, and nopasswd-sudo-expiry needs a
-# privileged helper the runner does not have. Named here rather than on the
-# list, because putting them on it would fail the build.
-#   hermes-skin-migration, omasnap, nopasswd-sudo-expiry
-# system-sleep-ownership-migration fails on the runner for a different reason
-# than it does here, and is not on the list either way.
+# --- two branches of one environment-dependent test ------------------------
+# system-sleep-ownership-migration quarantines a path behind a root-only
+# directory, and which of its two branches runs depends on the environment
+# rather than on the code. It touches nothing the port changed. The port
+# declares the umask-driven siblings (hermes-skin-migration, omasnap) and the
+# privileged one (nopasswd-sudo-expiry) as Arch-only, and those do not fail on
+# the runner at all.
+system-sleep-ownership-migration
