@@ -2,7 +2,6 @@
 
 source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
-require_command lua
 require_command xkbcli
 
 tmpdir=$(mktemp -d) && [[ -n $tmpdir && -d $tmpdir ]] ||

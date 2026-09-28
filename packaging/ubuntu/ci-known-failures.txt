@@ -48,6 +48,13 @@
 #   with a later plocate, so the test now stands down rather than failing for a
 #   tool version rather than for the code.
 #
+# Two more came off with the upstream merge, which brought three tests that all
+# block on one thing. jammy's `lua5.4` is not what default/hypr is written for
+# -- Hyprland embeds LuaJIT, which is 5.1 -- so the runner now installs lua5.1
+# and names it `lua`, which is both in the archive and what those tests need:
+#   keybindings-menu, screensaver-workspace, shell-shortcuts
+# and keybindings-menu additionally required a lua it never ran.
+#
 # Each entry below says why, so a line here is never a mystery. A name is
 # removed the day its cause is fixed, and the build says so if that day has
 # already passed.
@@ -65,12 +72,10 @@
 #                   else. The flags arrived in a later plocate.
 bar-text-color
 mise-work-path
-#   keybindings-menu  xkbcli, which is in no jammy archive package. A
 #                   workstation often has it from somewhere else -- this one
 #                   does, from a conda tree -- which is exactly the kind of
 #                   difference a baseline taken on a developer's machine
 #                   gets wrong.
-keybindings-menu
 
 # --- the machine the runner is --------------------------------------------
 # The tree is not root-owned, so omarchy-plymouth-set refuses to publish. It
