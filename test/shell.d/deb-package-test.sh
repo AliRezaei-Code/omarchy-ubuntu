@@ -163,9 +163,11 @@ pass "the package ships every file its own commands read"
 if "$ROOT/bin/omarchy-dashboard-app" --available >/dev/null 2>&1; then
   pass "omarchy-dashboard-app reports itself available"
 else
-  # gjs or the libadwaita typelib is absent on some machines; that is the
-  # documented refusal, and it is what makes the fallback a real decision.
-  "$ROOT/bin/omarchy-dashboard-app" --available 2>&1 |
+  # --available is a silent probe by design, so the message has to come from
+  # the launch path. gjs or the libadwaita typelib is absent on machines that
+  # have not installed them, and that refusal is what makes `omarchy dashboard`
+  # choose the terminal UI instead of showing nothing.
+  "$ROOT/bin/omarchy-dashboard-app" --route=style 2>&1 |
     grep -q 'the graphical dashboard is unavailable on this system' ||
     fail "omarchy-dashboard-app refuses with its documented message when it cannot start"
   pass "omarchy-dashboard-app refuses with its documented message when it cannot start"
