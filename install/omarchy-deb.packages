@@ -3,7 +3,7 @@
 # the Arch list stays authoritative for Arch, and this file is what the deb
 # depends on.
 #
-# Generated from 152 Arch packages; 50 of them have no Ubuntu
+# Generated from 152 Arch packages; 52 of them have no Ubuntu
 # equivalent and are listed at the bottom as declared-unsupported rather than
 # silently dropped.
 alsa-utils
@@ -46,7 +46,6 @@ gnome-keyring
 gnome-themes-extra
 grim
 gvfs-backends
-hype
 imagemagick
 imv
 inotify-tools
@@ -64,7 +63,6 @@ llvm
 lua5.1
 luarocks
 man-db
-monologue
 mpv
 mpv-mpris
 nautilus
@@ -117,6 +115,7 @@ fastfetch
 gpu-screen-recorder
 gum
 herdr
+hype
 hyprland
 hyprland-guiutils
 hyprland-preview-share-picker
@@ -129,6 +128,7 @@ lazygit
 libreoffice-fresh
 localsend
 mise-bin
+monologue
 moonlight-qt
 obsidian
 omacalc
