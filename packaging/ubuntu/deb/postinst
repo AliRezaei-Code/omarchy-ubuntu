@@ -28,6 +28,16 @@ link_binary() {
 
 echo "Omarchy is installed."
 
+# The dashboard icon is installed into hicolor, and an icon *name* only
+# resolves once the theme's cache knows about it. Without this the window and
+# the app-grid entry have no icon on a machine that has never run
+# gtk-update-icon-cache.
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  for theme in /usr/share/icons/hicolor /usr/share/pixmaps; do
+    [[ -d $theme ]] && gtk-update-icon-cache -f -q "$theme" 2>/dev/null || true
+  done
+fi
+
 # The first user to log in gets the shims, so a plain install has them and a
 # system with several users does not litter /usr/local/bin for all of them.
 first_home=""

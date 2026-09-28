@@ -139,6 +139,38 @@ while read -r entry; do
 done < <(cd "$ROOT" && ls applications/*.desktop)
 pass "the package ships every .desktop the tree declares"
 
+# The wrapper resolves the app's source relative to itself, so a package
+# without app/ installs perfectly, passes every dependency check, and then
+# cannot start the dashboard -- which is what seven releases did, and what the
+# applications/ omission before it did. The package has to ship what its own
+# commands read.
+for required in \
+  'usr/share/omarchy/app/omarchy-dashboard/omarchy-dashboard.js' \
+  'usr/share/omarchy/shell/plugins/menu/MenuModel.js' \
+  'usr/share/omarchy/shell/plugins/menu/MenuSnapshot.js' \
+  'usr/share/omarchy/shell/plugins/menu/TuiModel.js' \
+  'usr/share/omarchy/shell/plugins/menu/DashboardTui.js' \
+  'usr/share/omarchy/install/pkg-map.conf' \
+  'usr/share/omarchy/config/kitty/kitty.conf' ; do
+  listing_has "$required" || fail "the package ships $required, which its commands read"
+done
+pass "the package ships every file its own commands read"
+
+# And the graphical front end, asked directly, must find what it needs.
+# --available is the windowless probe `omarchy dashboard` uses to choose
+# between the app and the TUI, so a package whose app source is missing shows
+# up here as a missing file rather than as a user staring at nothing.
+if "$ROOT/bin/omarchy-dashboard-app" --available >/dev/null 2>&1; then
+  pass "omarchy-dashboard-app reports itself available"
+else
+  # gjs or the libadwaita typelib is absent on some machines; that is the
+  # documented refusal, and it is what makes the fallback a real decision.
+  "$ROOT/bin/omarchy-dashboard-app" --available 2>&1 |
+    grep -q 'the graphical dashboard is unavailable on this system' ||
+    fail "omarchy-dashboard-app refuses with its documented message when it cannot start"
+  pass "omarchy-dashboard-app refuses with its documented message when it cannot start"
+fi
+
 # gum is a substitute the tree ships, so it has to land somewhere a call site
 # can find it. /usr/local/bin is on PATH ahead of /usr/bin on a stock install
 # and is not owned by dpkg, which is exactly the point.

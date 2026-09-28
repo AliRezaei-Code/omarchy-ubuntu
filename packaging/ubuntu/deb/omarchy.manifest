@@ -517,6 +517,7 @@
 /usr/share/omarchy/applications/X.desktop
 /usr/share/omarchy/applications/YouTube.desktop
 /usr/share/omarchy/applications/Zoom.desktop
+/usr/share/omarchy/app/omarchy-dashboard/omarchy-dashboard.js
 /usr/share/omarchy/bin/omarchy
 /usr/share/omarchy/bin/omarchy-agent
 /usr/share/omarchy/bin/omarchy-agent-crash

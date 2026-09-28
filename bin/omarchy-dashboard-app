@@ -80,9 +80,23 @@ available() {
 # what it needs, and dirname is something it does not need.
 script_dir=${BASH_SOURCE[0]%/*}
 [[ $script_dir == "${BASH_SOURCE[0]}" ]] && script_dir=.
-bin_dir=$(cd -- "$script_dir" && pwd)
-app_source="$bin_dir/../app/omarchy-dashboard/omarchy-dashboard.js"
-omarchy_path=$(cd -- "$bin_dir/.." && pwd)
+# OMARCHY_PATH first, then the tree next to this script -- and the order is not
+# cosmetic. The package installs the commands into /usr/bin and the tree into
+# /usr/share/omarchy, so "one level up from me" is /usr, and resolving the app
+# that way looks for /usr/app and reports the dashboard unavailable on every
+# packaged install. A checkout has no OMARCHY_PATH of its own, so it needs the
+# second form. Both, in that order.
+omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
+app_source="$omarchy_path/app/omarchy-dashboard/omarchy-dashboard.js"
+
+# A checkout has no OMARCHY_PATH of its own, and there the tree is one level
+# up from bin/. The package installs the commands into /usr/bin and the tree
+# into /usr/share/omarchy, so "one level up from me" is /usr, which is why the
+# default is the packaged root and this is only the fallback.
+if [[ ! -r $app_source ]]; then
+  omarchy_path=$(cd -- "$script_dir/.." && pwd)
+  app_source="$omarchy_path/app/omarchy-dashboard/omarchy-dashboard.js"
+fi
 
 if [[ ${1:-} == --available ]]; then
   if available; then
