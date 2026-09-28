@@ -3,7 +3,7 @@
 # omarchy:summary=Prompt for a single line of text in the terminal
 # omarchy:group=tui
 # omarchy:name=input
-# omarchy:args=[--header T] [--prompt P] [--placeholder T] [--password]
+# omarchy:args=[--header T] [--prompt P] [--placeholder T] [--value V] [--char-limit N] [--password]
 # omarchy:examples=omarchy-tui-input --prompt "Name> "|omarchy tui input --header "Enter Windows username:"
 
 # The headless replacement for `gum input`. The prompt and the header are
@@ -26,10 +26,12 @@ set -euo pipefail
 header=""
 prompt="> "
 placeholder=""
+initial=""
+char_limit=0
 password=0
 
 usage() {
-  echo "Usage: omarchy-tui-input [--header T] [--prompt P] [--placeholder T] [--password]" >&2
+  echo "Usage: omarchy-tui-input [--header T] [--prompt P] [--placeholder T] [--value V] [--char-limit N] [--password]" >&2
 }
 
 while (( $# > 0 )); do
@@ -49,6 +51,17 @@ while (( $# > 0 )); do
   --placeholder)
     (( $# > 0 )) || { echo "omarchy-tui-input: --placeholder requires a value" >&2; exit 64; }
     placeholder="$1"
+    shift
+    ;;
+  --value)
+    (( $# > 0 )) || { echo "omarchy-tui-input: --value requires a value" >&2; exit 64; }
+    initial="$1"
+    shift
+    ;;
+  --char-limit)
+    (( $# > 0 )) || { echo "omarchy-tui-input: --char-limit requires a value" >&2; exit 64; }
+    [[ $1 =~ ^[0-9]+$ ]] || { echo "omarchy-tui-input: --char-limit takes a count" >&2; exit 64; }
+    char_limit="$1"
     shift
     ;;
   --password)
@@ -118,7 +131,7 @@ fi
 # assume 80 rather than clip the prompt down to nothing.
 (( term_cols > 0 )) || term_cols=80
 
-value=""
+value="$initial"
 drawn=0
 
 # The ghost placeholder shares the input line, so the prompt is redrawn rather
@@ -187,7 +200,9 @@ while :; do
   case "$KEY" in
   $'\r' | $'\n')
     printf '\n' >&2
-    # An untouched line takes the placeholder, the way gum does.
+    # An untouched line takes the placeholder, the way gum does. A --value is
+    # not a placeholder: it is what the field was filled with, so the value is
+    # already there and this leaves it alone.
     [[ -z $value ]] && value="$placeholder"
     printf '%s\n' "$value"
     exit 0
@@ -203,7 +218,11 @@ while :; do
     (( ${#value} > 0 )) && value="${value%?}"
     ;;
   *)
-    value+="$KEY"
+    # --char-limit caps the field, so a numeric answer cannot run past the
+    # width the caller asked for. gum drops the keystroke; so does this.
+    if (( char_limit == 0 || ${#value} < char_limit )); then
+      value+="$KEY"
+    fi
     ;;
   esac
 done

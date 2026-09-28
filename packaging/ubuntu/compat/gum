@@ -104,14 +104,17 @@ parse_flags() {
 }
 
 if (( $# == 0 )); then
-  unsupported "a subcommand is required (choose, input, confirm, style)"
+  unsupported "a subcommand is required (choose, filter, input, confirm, style)"
 fi
 
 subcommand="$1"
 shift
 
 case "$subcommand" in
-choose)
+choose | filter)
+  # gum's filter and choose are the same list widget; `filter` is what
+  # install/provisioning/setup-form.sh reaches for. Handled together so the
+  # two cannot drift.
   # gum choose reads its rows from stdin, or from trailing arguments when
   # stdin is the terminal. The primitive wants the same split, so operands
   # are fed to it on stdin and the caller's own stdin is passed through
@@ -136,12 +139,17 @@ choose)
   ;;
 
 input)
-  parse_flags "height header placeholder prompt prompt.foreground" "password" "$@"
+  parse_flags "height header placeholder prompt prompt.foreground value char-limit" "password" "$@"
 
   args=()
   [[ -n ${flag_values[header]:-} ]] && args+=(--header "${flag_values[header]}")
   [[ -n ${flag_values[prompt]:-} ]] && args+=(--prompt "${flag_values[prompt]}")
   [[ -n ${flag_values[placeholder]:-} ]] && args+=(--placeholder "${flag_values[placeholder]}")
+  # --value pre-fills the field and --char-limit caps it. Both are answered:
+  # omarchy-windows-vm asks for a CPU count with a default of 2 and two digits,
+  # and failing loudly there would break a working prompt over a cap.
+  [[ -n ${flag_values[value]:-} ]] && args+=(--value "${flag_values[value]}")
+  [[ -n ${flag_values[char-limit]:-} ]] && args+=(--char-limit "${flag_values[char-limit]}")
   [[ -n ${flag_values[password]:-} ]] && args+=(--password)
   # height sizes a box this primitive does not draw, and prompt.foreground is
   # a colour with no renderer here; both are dropped rather than guessed at.
@@ -177,7 +185,7 @@ style)
   # here. There is no renderer, so the shim keeps the words and drops the
   # presentation. Call sites that already build their own "  - " markers keep
   # them, which is why they still read correctly.
-  parse_flags "border padding margin foreground" "bold" "$@"
+  parse_flags "border border-foreground padding margin foreground align" "bold" "$@"
 
   (( ${#REST[@]} > 0 )) || unsupported "gum style needs something to print"
   # One operand per line, which is what gum does with them: a call site that

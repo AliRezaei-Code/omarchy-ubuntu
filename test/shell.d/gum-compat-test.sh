@@ -24,7 +24,7 @@ trap 'rm -rf "$test_tmp"' EXIT
 GUM=$ROOT/packaging/ubuntu/compat/gum
 
 # The subcommands the shim dispatches on. Anything else is refused by name.
-HANDLED_SUBCOMMANDS="choose confirm input style"
+HANDLED_SUBCOMMANDS="choose confirm filter input style"
 
 # The flags the shim translates. Measured from the call sites in bin/, plus
 # the ones in install/provisioning/setup-form.sh and
@@ -39,31 +39,38 @@ confirm:--affirmative
 confirm:--default
 confirm:--header
 confirm:--negative
+input:--char-limit
 input:--header
 input:--height
 input:--password
 input:--placeholder
 input:--prompt
 input:--prompt.foreground
+input:--value
+style:--align
 style:--bold
 style:--border
+style:--border-foreground
 style:--foreground
 style:--margin
 style:--padding
+filter:--header
+filter:--height
 "
 
-# Three call sites in bin/ use flags the shim deliberately does not speak, and
-# one uses a whole subcommand. The shim answers each with a loud failure naming
-# it, which is the design: an unported call site should show up as a broken
-# command, not as a silently different one. Speaking any of them is a
-# deliberate edit to the shim and to HANDLED_FLAGS above, and the matching pin
-# has to go at the same time.
+# One subcommand in bin/ has no equivalent here: gum's table renderer draws a
+# grid, and a text picker is not a grid. The shim refuses it by name, which is
+# the design -- an unported call site should show up as a broken command, not
+# as a silently different one.
 KNOWN_UNSUPPORTED_SUBCOMMANDS="table" # bin/omarchy-provision-owner:669
-KNOWN_UNHANDLED_FLAGS="
-input:--char-limit   # bin/omarchy-windows-vm:1207
-input:--value        # bin/omarchy-windows-vm:1207
-style:--align        # bin/omarchy-windows-vm:1289,1430,1541
-"
+
+# No flag is left unhandled. The first version of this list had three on it --
+# input --value, input --char-limit and style --align, all from
+# bin/omarchy-windows-vm -- and the shim refused them loudly, which meant a
+# working prompt was broken on Ubuntu over a default value and a character
+# cap. They are answered now. A flag added here is a deliberate decision to
+# leave a call site broken, and the scan below will say so.
+KNOWN_UNHANDLED_FLAGS=""
 
 # --------------------------------------------------------- the vocabulary --
 # The measurement, not a fixture: comment lines are dropped, backslash
@@ -133,8 +140,15 @@ cat >"$test_tmp/logical.awk" <<'AWK'
 }
 AWK
 
-find "$ROOT/bin" -type f | sort | while read -r file; do
-  awk -f "$test_tmp/logical.awk" "$file"
+# Every tree that calls gum, not just bin/. The first version of this scanned
+# bin/ alone, and a migration reached for style --border-foreground and the
+# shim refused it -- which is exactly the failure this file exists to prevent,
+# found in the one place the scan did not look.
+for tree in bin migrations install default config; do
+  [[ -d $ROOT/$tree ]] || continue
+  find "$ROOT/$tree" -type f | sort | while read -r file; do
+    awk -f "$test_tmp/logical.awk" "$file"
+  done
 done | perl "$test_tmp/scan.pl" | sort -u >"$test_tmp/in-use"
 
 [[ -s $test_tmp/in-use ]] || fail "bin/ still calls gum somewhere" "no call sites were found"
@@ -142,7 +156,10 @@ done | perl "$test_tmp/scan.pl" | sort -u >"$test_tmp/in-use"
 # The pin lists are written one entry per line with a trailing comment saying
 # where the call site is, so the comments come off before the words are split.
 words_of() {
-  sed 's/#.*//' <<<"$1" | tr -s '[:space:]' '\n' | grep -v '^$' | sort -u
+  # An empty pin list is the goal, not an error, and grep exits 1 on no
+  # matches -- which under set -e would take the whole file down the moment
+  # the last pinned flag is handled.
+  sed 's/#.*//' <<<"$1" | tr -s '[:space:]' '\n' | grep -v '^$' | sort -u || true
 }
 
 # Sort the three vocabularies and let comm do the set arithmetic, so a pin
@@ -154,14 +171,14 @@ cat "$test_tmp/handled-subcommands" "$test_tmp/pinned-subcommands" | sort -u >"$
 
 comm -23 "$test_tmp/used-subcommands" "$test_tmp/known-subcommands" >"$test_tmp/unaccounted-subcommands"
 [[ ! -s $test_tmp/unaccounted-subcommands ]] ||
-  fail "every gum subcommand in bin/ is handled or pinned as unsupported" \
+  fail "every gum subcommand in the tree is handled or pinned as unsupported" \
     "$(tr '\n' ' ' <"$test_tmp/unaccounted-subcommands")"
 pass "every gum subcommand in bin/ is handled or pinned as unsupported"
 
 comm -23 "$test_tmp/pinned-subcommands" "$test_tmp/used-subcommands" >"$test_tmp/stale-subcommands"
 [[ ! -s $test_tmp/stale-subcommands ]] ||
-  fail "every pinned unsupported subcommand is one bin/ still calls" \
-    "nothing in bin/ calls: $(tr '\n' ' ' <"$test_tmp/stale-subcommands")"
+  fail "every pinned unsupported subcommand is one the tree still calls" \
+    "nothing calls it: $(tr '\n' ' ' <"$test_tmp/stale-subcommands")"
 pass "every pinned unsupported subcommand is one bin/ still calls"
 
 grep ' ' "$test_tmp/in-use" | awk '{print $1 ":" $2}' | sort -u >"$test_tmp/used-flags"
@@ -169,9 +186,31 @@ words_of "$HANDLED_FLAGS" >"$test_tmp/handled-flags"
 words_of "$KNOWN_UNHANDLED_FLAGS" >"$test_tmp/pinned-flags"
 cat "$test_tmp/handled-flags" "$test_tmp/pinned-flags" | sort -u >"$test_tmp/known-flags"
 
+# What the shim actually speaks, read out of its own parse_flags calls rather
+# than from the pin above, so the pin cannot claim a flag the shim dropped.
+# Both arguments of parse_flags are space-separated word lists, and the value
+# list is the long one, so the words have to be split out rather than the lines.
+grep -oE 'parse_flags "[^"]*" "[^"]*"' "$GUM" |
+  tr '"' ' ' | tr ' ' '\n' |
+  grep -E '^[a-z][a-z.-]*$' | sort -u |
+  grep . >"$test_tmp/shim-flags"
+
+# Compared as bare flag names: the shim's parse_flags calls are one per branch
+# and do not name their subcommand, so the pin's "subcommand:--flag" is reduced
+# to the flag. That is coarser than the pin, and deliberately so -- what this
+# catches is a flag the shim stopped parsing, which is the regression that
+# turns a working call site into a loud failure on a user's machine.
+sed 's/.*:--//' "$test_tmp/handled-flags" | sort -u | grep . >"$test_tmp/handled-bare-flags"
+
+comm -13 "$test_tmp/shim-flags" "$test_tmp/handled-bare-flags" >"$test_tmp/overclaimed-flags"
+[[ ! -s $test_tmp/overclaimed-flags ]] ||
+  fail "every flag pinned as handled is one the shim speaks" \
+    "the shim no longer parses: $(tr '\n' ' ' <"$test_tmp/overclaimed-flags")"
+pass "every flag pinned as handled is one the shim speaks"
+
 comm -23 "$test_tmp/used-flags" "$test_tmp/known-flags" >"$test_tmp/unaccounted-flags"
 [[ ! -s $test_tmp/unaccounted-flags ]] ||
-  fail "every gum flag in bin/ is handled or pinned as unhandled" \
+  fail "every gum flag in the tree is handled or pinned as unhandled" \
     "unaccounted for: $(tr '\n' ' ' <"$test_tmp/unaccounted-flags")"
 pass "every gum flag in bin/ is handled or pinned as unhandled"
 

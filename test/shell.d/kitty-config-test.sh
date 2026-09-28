@@ -12,7 +12,13 @@ migration="$ROOT/migrations/1788745941.sh"
 mkdir -p "$(dirname "$kitty_config")" "$test_dir/bin"
 
 run_migration() {
-  env HOME="$test_home" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" bash -euo pipefail "$migration"
+  # packaging/ubuntu/compat on PATH because that is where the gum shim lives,
+  # and a checkout has no /usr/local/bin/gum: the deb installs it there. A
+  # packaged install needs nothing here, and the test should not fail for the
+  # difference between a checkout and an install.
+  env HOME="$test_home" OMARCHY_PATH="$ROOT" \
+    PATH="$ROOT/packaging/ubuntu/compat:$ROOT/bin:$PATH" \
+    bash -euo pipefail "$migration"
 }
 
 cp "$legacy" "$kitty_config"

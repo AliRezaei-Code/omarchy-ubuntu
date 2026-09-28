@@ -47,8 +47,12 @@
 #                   falls back rather than refusing, so the test -- which
 #                   requires the tool -- is what fails.
 #   mise-work-path  mise, which is not in the 22.04 archive
-#   locate          plocate's updatedb. The test drives it with --config-file
-#                   and --debug-pruning, which 22.04's plocate does not have.
+#   locate          plocate 1.1.15, which is what 22.04 ships. The test drives
+#                   updatedb with --config-file and --debug-pruning, and
+#                   `updatedb.plocate --help` on the jammy package lists
+#                   neither: it has --database-root, --output,
+#                   --require-visibility and the prune options, and nothing
+#                   else. The flags arrived in a later plocate.
 bar-text-color
 mise-work-path
 locate
@@ -58,11 +62,6 @@ locate
 #                   difference a baseline taken on a developer's machine
 #                   gets wrong.
 keybindings-menu
-
-# --- a checkout is not a packaged install ----------------------------------
-# A migration calls gum, and the shim only reaches PATH by being installed at
-# /usr/local/bin -- the right shape for a checkout and the wrong one here.
-kitty-config
 
 # --- the machine the runner is --------------------------------------------
 # The tree is not root-owned, so omarchy-plymouth-set refuses to publish. It
