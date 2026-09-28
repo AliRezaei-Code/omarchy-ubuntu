@@ -55,6 +55,13 @@
 #   keybindings-menu, screensaver-workspace, shell-shortcuts
 # and keybindings-menu additionally required a lua it never ran.
 #
+# One more came off with the merge, and it was a real defect rather than a gap:
+# migrations/1790528634.sh, which moves the Elsewhen clock into Omarchy, writes
+# jq that jammy's jq 1.6 will not compile -- an if/elif chain with no final
+# `else` -- so it failed on every deb install. Every branch now has one, which
+# also stops a jq that *does* tolerate the omission from yielding null and
+# writing nulls over the user's unrelated bar widgets.
+#
 # Each entry below says why, so a line here is never a mystery. A name is
 # removed the day its cause is fixed, and the build says so if that day has
 # already passed.
