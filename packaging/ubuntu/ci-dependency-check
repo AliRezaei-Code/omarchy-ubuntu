@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Every name in the deb's Depends must be a package the target archive has.
+#
+# Asked per name rather than as one whole-package `apt-get install -s`, and
+# the reason is the CI runner: it is not a stock 22.04, it arrives with
+# Docker's containerd.io already installed, and that conflicts with the
+# containerd this package depends on. A whole-package simulation then fails for
+# a reason that has nothing to do with us, while a per-name question cannot be
+# polluted by what the runner happens to have.
+#
+# It is also the question that matters. v4.0.0.alpha+ubuntu.5 shipped with two
+# names the archive does not have, and nothing in the workflow could see it,
+# because dpkg-deb is perfectly happy to build a package nothing can install.
+
+set -uo pipefail
+
+deb="${1:?usage: ci-dependency-check <path to .deb>}"
+missing=""
+
+dpkg-deb -f "$deb" Depends |
+  tr ',' '\n' | sed 's/^ *//' | grep -v '^$' | sort -u >/tmp/omarchy-ci-deps
+
+while read -r dep; do
+  candidate=$(apt-cache policy "$dep" 2>/dev/null | awk '/Candidate:/ { print $2; exit }')
+
+  if [[ -z $candidate || $candidate == "(none)" ]]; then
+    missing="$missing $dep"
+  fi
+done <"/tmp/omarchy-ci-deps"
+
+if [[ -n $missing ]]; then
+  echo "Not in the ubuntu-22.04 archive:$missing" >&2
+  echo "Map or declare each in install/pkg-map.conf." >&2
+  exit 1
+fi
+
+echo "all $(wc -l <"/tmp/omarchy-ci-deps") dependencies are in the archive"

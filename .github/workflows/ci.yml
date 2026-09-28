@@ -85,23 +85,16 @@ jobs:
           dpkg-deb --contents "$deb" | grep -q 'usr/share/omarchy/bin/'
 
       # apt's own resolver, as a dry run: --simulate answers whether the
-      # package is installable without touching the system and without root.
-      - name: The package is actually installable
-        run: |
-          set -euo pipefail
-          # Absolute, and globbed before quoting: apt reads a bare
-          # build/deb/... as the name of a package rather than as a file to
-          # install, and a glob inside quotes never expands.
-          shopt -s nullglob
-          debs=(build/deb/*.deb)
-          shopt -u nullglob
-          if (( ${#debs[@]} == 0 )); then
-            echo "make deb produced nothing" >&2
-            exit 1
-          fi
-          if ! apt-get install -s --no-install-recommends "$(pwd)/${debs[0]}"; then
-            echo >&2
-            echo "apt cannot resolve this package. Map or declare every" >&2
-            echo "Arch name in install/pkg-map.conf first." >&2
-            exit 1
-          fi
+      # Every name in Depends has to be a package the target archive has, and
+      # that is asked per name rather than as one whole-package simulation. The
+      # runner is not a stock 22.04: it arrives with Docker's containerd.io
+      # already installed, which conflicts with the containerd this package
+      # depends on, so `apt-get install -s` on the whole package fails for a
+      # reason that has nothing to do with us. A per-name question cannot be
+      # polluted by what the runner happens to have -- and it is the question
+      # that matters: v4.0.0.alpha+ubuntu.5 shipped with two names the archive
+      # does not have, and nothing here could see it, because dpkg-deb is happy
+      # to build a package nothing can install.
+      - name: Every dependency is a package the target archive has
+
+        run: ./packaging/ubuntu/ci-dependency-check build/deb/*.deb
