@@ -5,8 +5,8 @@
 set -euo pipefail
 
 HOST_NAME="com.omarchy.copy_url"
-HOST_PATH="$OMARCHY_PATH/bin/omarchy-chromium-copy-url-host"
-TEMPLATE="$OMARCHY_PATH/default/chromium/native-messaging-hosts/$HOST_NAME.json"
+HOST_PATH="${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-chromium-copy-url-host"
+TEMPLATE="${OMARCHY_PATH:-/usr/share/omarchy}/default/chromium/native-messaging-hosts/$HOST_NAME.json"
 
 browser_dirs=(
   "$HOME/.config/chromium"

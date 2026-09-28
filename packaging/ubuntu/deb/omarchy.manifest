@@ -481,6 +481,42 @@
 /usr/local/bin/gum
 /usr/share/fonts/omarchy/omarchy.ttf
 /usr/share/icons/hicolor/scalable/apps/omarchy-dashboard.svg
+/usr/share/omarchy/applications/Basecamp.desktop
+/usr/share/omarchy/applications/Discord.desktop
+/usr/share/omarchy/applications/Disk Usage.desktop
+/usr/share/omarchy/applications/Docker.desktop
+/usr/share/omarchy/applications/foot.desktop
+/usr/share/omarchy/applications/Google Contacts.desktop
+/usr/share/omarchy/applications/Google Maps.desktop
+/usr/share/omarchy/applications/Google Messages.desktop
+/usr/share/omarchy/applications/Google Photos.desktop
+/usr/share/omarchy/applications/HEY.desktop
+/usr/share/omarchy/applications/icons/Basecamp.png
+/usr/share/omarchy/applications/icons/Battle.net.png
+/usr/share/omarchy/applications/icons/ChatGPT.png
+/usr/share/omarchy/applications/icons/Disk Usage.png
+/usr/share/omarchy/applications/icons/Docker.png
+/usr/share/omarchy/applications/icons/Google Contacts.png
+/usr/share/omarchy/applications/icons/Google Maps.png
+/usr/share/omarchy/applications/icons/Google Messages.png
+/usr/share/omarchy/applications/icons/Google Photos.png
+/usr/share/omarchy/applications/icons/HEY.png
+/usr/share/omarchy/applications/icons/imv.png
+/usr/share/omarchy/applications/icons/omarchy-dashboard.svg
+/usr/share/omarchy/applications/icons/omarchy-discord.png
+/usr/share/omarchy/applications/icons/Retro Gaming.png
+/usr/share/omarchy/applications/icons/WhatsApp.png
+/usr/share/omarchy/applications/icons/windows.png
+/usr/share/omarchy/applications/icons/X.png
+/usr/share/omarchy/applications/icons/YouTube.png
+/usr/share/omarchy/applications/icons/Zoom.png
+/usr/share/omarchy/applications/imv.desktop
+/usr/share/omarchy/applications/mpv.desktop
+/usr/share/omarchy/applications/Omarchy.desktop
+/usr/share/omarchy/applications/WhatsApp.desktop
+/usr/share/omarchy/applications/X.desktop
+/usr/share/omarchy/applications/YouTube.desktop
+/usr/share/omarchy/applications/Zoom.desktop
 /usr/share/omarchy/bin/omarchy
 /usr/share/omarchy/bin/omarchy-agent
 /usr/share/omarchy/bin/omarchy-agent-crash

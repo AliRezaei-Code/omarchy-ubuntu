@@ -8,7 +8,7 @@ set -o pipefail
 
 CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
-OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
+OMARCHY_THEMES_PATH="${OMARCHY_PATH:-/usr/share/omarchy}/themes"
 
 COLOR_OUTPUT=1
 APPLY_OSC="auto"
@@ -88,8 +88,8 @@ omarchy_tool() {
   local tool="$1"
   shift
 
-  if [[ -x $OMARCHY_PATH/bin/$tool ]]; then
-    "$OMARCHY_PATH/bin/$tool" "$@"
+  if [[ -x ${OMARCHY_PATH:-/usr/share/omarchy}/bin/$tool ]]; then
+    "${OMARCHY_PATH:-/usr/share/omarchy}/bin/$tool" "$@"
   else
     "$tool" "$@"
   fi

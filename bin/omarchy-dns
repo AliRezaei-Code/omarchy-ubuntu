@@ -42,7 +42,7 @@ provider_from_arg() {
 
 # The path etc/sudoers.d/omarchy-dns names. The privileged half always runs from
 # there rather than from whichever copy was invoked, so the rule matches even
-# where $OMARCHY_PATH points at a checkout.
+# where ${OMARCHY_PATH:-/usr/share/omarchy} points at a checkout.
 PACKAGED_PATH=/usr/bin/omarchy-dns
 
 # True when sudo would run this exact command without stopping for a password.

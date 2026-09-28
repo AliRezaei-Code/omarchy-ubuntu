@@ -4,7 +4,7 @@
 # omarchy:group=plugin
 # omarchy:hidden=true
 
-# Walks $OMARCHY_PATH/shell/plugins and ~/.config/omarchy/plugins, reads every
+# Walks ${OMARCHY_PATH:-/usr/share/omarchy}/shell/plugins and ~/.config/omarchy/plugins, reads every
 # manifest.json / *.manifest.json, and emits one JSON object per plugin with
 # computed fields (sourceDir, barWidgetPath, barPath, firstParty). This is the
 # single source of truth used by bar selection and plugin enable/clone, so
@@ -16,7 +16,7 @@ paths=()
 
 while IFS= read -r manifest; do
   paths+=("$manifest")
-done < <(find "$OMARCHY_PATH/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) | sort)
+done < <(find "${OMARCHY_PATH:-/usr/share/omarchy}/shell/plugins" -mindepth 2 -maxdepth 4 -type f \( -name manifest.json -o -name '*.manifest.json' \) | sort)
 
 user_dir="$HOME/.config/omarchy/plugins"
 if [[ -d $user_dir ]]; then

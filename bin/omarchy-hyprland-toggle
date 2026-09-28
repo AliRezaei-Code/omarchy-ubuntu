@@ -15,7 +15,7 @@ fi
 FLAG_NAME="$1"
 ACTION="${2:-toggle}"
 FLAG_FILE="$HOME/.local/state/omarchy/toggles/hypr/$FLAG_NAME.lua"
-FLAG_SOURCE="$OMARCHY_PATH/default/hypr/toggles/$FLAG_NAME.lua"
+FLAG_SOURCE="${OMARCHY_PATH:-/usr/share/omarchy}/default/hypr/toggles/$FLAG_NAME.lua"
 
 on() {
   if [[ -f $FLAG_SOURCE ]]; then

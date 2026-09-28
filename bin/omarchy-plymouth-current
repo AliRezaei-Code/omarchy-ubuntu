@@ -7,7 +7,7 @@
 # copy of logo.png, so matching it back identifies the current theme.
 installed_logo=/usr/share/plymouth/themes/omarchy/logo.png
 
-if cmp -s "$OMARCHY_PATH/default/plymouth/logo.png" "$installed_logo"; then
+if cmp -s "${OMARCHY_PATH:-/usr/share/omarchy}/default/plymouth/logo.png" "$installed_logo"; then
   echo default
   exit
 fi

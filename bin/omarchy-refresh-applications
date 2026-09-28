@@ -4,14 +4,18 @@
 
 # Copy .desktop declarations
 mkdir -p ~/.local/share/applications
-cp "$OMARCHY_PATH"/applications/*.desktop ~/.local/share/applications/
+cp "${OMARCHY_PATH:-/usr/share/omarchy}"/applications/*.desktop ~/.local/share/applications/
 
 if omarchy-cmd-present alacritty; then
-  cp "$OMARCHY_PATH/default/alacritty/Alacritty.desktop" ~/.local/share/applications/
+  cp "${OMARCHY_PATH:-/usr/share/omarchy}/default/alacritty/Alacritty.desktop" ~/.local/share/applications/
 fi
 
-if [[ -f "$OMARCHY_PATH/install/user/mise.sh" ]]; then
-  bash "$OMARCHY_PATH/install/user/mise.sh"
+# Gated on mise, not just on the file. The script is mise commands, so on a
+# system without mise -- and mise is in no Ubuntu 22.04 archive package, so
+# that is every deb install -- it prints "mise: command not found" and the
+# user is left thinking their refresh failed.
+if [[ -f "${OMARCHY_PATH:-/usr/share/omarchy}/install/user/mise.sh" ]] && omarchy-cmd-present mise; then
+  bash "${OMARCHY_PATH:-/usr/share/omarchy}/install/user/mise.sh"
 fi
 
 update-desktop-database ~/.local/share/applications

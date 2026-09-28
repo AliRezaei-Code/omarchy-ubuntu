@@ -14,5 +14,5 @@ omarchy-refresh-pacman
 omarchy-update-pacman -Suu --noconfirm
 
 # Ensure all packages are installed
-mapfile -t packages < <(grep -v '^#' "$OMARCHY_PATH/install/omarchy-base.packages" | grep -v '^$')
+mapfile -t packages < <(grep -v '^#' "${OMARCHY_PATH:-/usr/share/omarchy}/install/omarchy-base.packages" | grep -v '^$')
 omarchy-update-pacman -Syu --noconfirm --needed "${packages[@]}"

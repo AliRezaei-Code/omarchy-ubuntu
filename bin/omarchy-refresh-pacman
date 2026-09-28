@@ -33,8 +33,8 @@ fi
 sudo cp -f /etc/pacman.conf /etc/pacman.conf.bak
 sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 echo "Setting channel to $channel"
-sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$channel.conf" /etc/pacman.conf
-sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
+sudo cp -f "${OMARCHY_PATH:-/usr/share/omarchy}/default/pacman/pacman-$channel.conf" /etc/pacman.conf
+sudo cp -f "${OMARCHY_PATH:-/usr/share/omarchy}/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
 
 # Allow user customization of /etc/pacman.conf before the upgrade runs, so
 # custom repositories and IgnorePkg entries shape the downgrade-capable
@@ -42,8 +42,8 @@ sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirr
 # wrapper, and the timestamp is revoked again afterwards so any authorization
 # the hook obtained for itself cannot carry into the transaction.
 omarchy_security_revoke_sudo_timestamp
-PATH="$OMARCHY_PATH/default/omarchy/sudo-no-update:$user_path" \
-  "$OMARCHY_PATH/bin/omarchy-hook" pre-refresh-pacman
+PATH="${OMARCHY_PATH:-/usr/share/omarchy}/default/omarchy/sudo-no-update:$user_path" \
+  "${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-hook" pre-refresh-pacman
 omarchy_security_revoke_sudo_timestamp
 
 # Reset all package DBs and then update

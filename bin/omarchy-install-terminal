@@ -30,15 +30,15 @@ if omarchy-pkg-add $package; then
   # Copy custom desktop entries with X-TerminalArg* keys
   if [[ $package == "alacritty" ]]; then
     mkdir -p ~/.local/share/applications
-    cp "$OMARCHY_PATH/default/alacritty/$desktop_id" ~/.local/share/applications/
+    cp "${OMARCHY_PATH:-/usr/share/omarchy}/default/alacritty/$desktop_id" ~/.local/share/applications/
   elif [[ $package == "foot" ]]; then
     mkdir -p ~/.local/share/applications
-    cp "$OMARCHY_PATH/applications/$desktop_id" ~/.local/share/applications/
+    cp "${OMARCHY_PATH:-/usr/share/omarchy}/applications/$desktop_id" ~/.local/share/applications/
   fi
 
   # Copy default config for optional terminals when missing
   if [[ ! -e ~/.config/$package ]]; then
-    cp -Rpf "$OMARCHY_PATH/config/$package" ~/.config/
+    cp -Rpf "${OMARCHY_PATH:-/usr/share/omarchy}/config/$package" ~/.config/
   fi
 
   # Update xdg-terminals.list to prioritize the proper terminal

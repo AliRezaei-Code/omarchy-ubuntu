@@ -15,7 +15,7 @@ setup_pam_config() {
   # pam_exec needs a literal absolute path (no env expansion). Point at the
   # fixed /usr/bin path the omarchy package always provides, so the gate keeps
   # working across package installs and dev-link — the latter overlays
-  # $OMARCHY_PATH trees but leaves /usr/bin untouched.
+  # ${OMARCHY_PATH:-/usr/share/omarchy} trees but leaves /usr/bin untouched.
   local fprintd_gate="auth      [success=1 default=ignore] pam_exec.so quiet /usr/bin/omarchy-hw-laptop-closed"
 
   # Configure sudo

@@ -29,7 +29,7 @@ POLICY_DIRS=(
 
 # The path etc/sudoers.d/omarchy-theme-browser names. The privileged half always
 # runs from there rather than from whichever copy was invoked, so the rule
-# matches even where $OMARCHY_PATH points at a checkout.
+# matches even where ${OMARCHY_PATH:-/usr/share/omarchy} points at a checkout.
 PACKAGED_PATH=/usr/bin/omarchy-theme-set-browser-policy
 
 usage() {

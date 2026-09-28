@@ -4,7 +4,7 @@
 
 sudo_options=()
 if [[ ${OMARCHY_SUDO_NO_UPDATE:-0} == "1" ]]; then
-  sudo_wrapper="$OMARCHY_PATH/default/omarchy/sudo-no-update/sudo"
+  sudo_wrapper="${OMARCHY_PATH:-/usr/share/omarchy}/default/omarchy/sudo-no-update/sudo"
   [[ -x $sudo_wrapper ]] || exit 1
   sudo_options=(--sudo "$sudo_wrapper" --sudoloop=false)
 fi

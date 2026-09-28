@@ -5,8 +5,8 @@
 set -euo pipefail
 
 HOST_NAME="com.omarchy.ytdlp"
-HOST_PATH="$OMARCHY_PATH/bin/omarchy-chromium-ytdlp-host"
-TEMPLATE="$OMARCHY_PATH/default/chromium/native-messaging-hosts/$HOST_NAME.json"
+HOST_PATH="${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-chromium-ytdlp-host"
+TEMPLATE="${OMARCHY_PATH:-/usr/share/omarchy}/default/chromium/native-messaging-hosts/$HOST_NAME.json"
 
 # Chromium-based browser profile roots that use the NativeMessagingHosts layout.
 browser_dirs=(

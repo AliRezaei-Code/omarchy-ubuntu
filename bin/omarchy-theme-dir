@@ -14,5 +14,5 @@ fi
 if [[ -d $HOME/.config/omarchy/themes/$theme ]]; then
   echo "$HOME/.config/omarchy/themes/$theme"
 else
-  echo "$OMARCHY_PATH/themes/$theme"
+  echo "${OMARCHY_PATH:-/usr/share/omarchy}/themes/$theme"
 fi

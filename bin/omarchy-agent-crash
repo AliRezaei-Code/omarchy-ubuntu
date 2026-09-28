@@ -23,7 +23,7 @@ comm=${2:-unknown}
 exe=${3:-unknown}
 signal=${4:-unknown}
 
-skill="$OMARCHY_PATH/default/agents/skills/diagnose-crash/SKILL.md"
+skill="${OMARCHY_PATH:-/usr/share/omarchy}/default/agents/skills/diagnose-crash/SKILL.md"
 
 # Looked up live so a hand-run PID still gets a timestamp. A rotated-away core
 # only costs the timestamp, so failure is tolerated.

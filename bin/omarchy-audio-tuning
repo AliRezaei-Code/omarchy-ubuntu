@@ -7,7 +7,7 @@
 
 set -uo pipefail
 
-tunings_dir="$OMARCHY_PATH/default/audio/tunings"
+tunings_dir="${OMARCHY_PATH:-/usr/share/omarchy}/default/audio/tunings"
 config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 # The tuning is hosted by its own PipeWire client, under its own config name, so
@@ -18,11 +18,11 @@ config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 # make this service host unrelated user filters too.
 host_config_name=omarchy-speaker-tuning.conf
 host_config="$config_home/pipewire/$host_config_name"
-host_source="$OMARCHY_PATH/default/audio/filter-chain-host.conf"
+host_source="${OMARCHY_PATH:-/usr/share/omarchy}/default/audio/filter-chain-host.conf"
 fragment="$config_home/pipewire/$host_config_name.d/90-tuning.conf"
 unit_name=omarchy-speaker-tuning.service
 unit="$config_home/systemd/user/$unit_name"
-unit_source="$OMARCHY_PATH/default/systemd/user/$unit_name"
+unit_source="${OMARCHY_PATH:-/usr/share/omarchy}/default/systemd/user/$unit_name"
 
 # Earlier revisions loaded the tuning into the daemon, as a WirePlumber smart
 # filter, or into the shared filter-chain.conf.d namespace. Remove all three so

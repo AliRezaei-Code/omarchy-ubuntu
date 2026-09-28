@@ -369,7 +369,7 @@ run_root_transaction() {
       validate_trusted_directory "$sddm_dir"
       rm -f -- "$sddm_dir/logo.svg"
     fi
-  ' bash "$mode" "$OMARCHY_PATH" "$bg_hex" "$text_hex" "$((64 * 1024 * 1024))"
+  ' bash "$mode" "${OMARCHY_PATH:-/usr/share/omarchy}" "$bg_hex" "$text_hex" "$((64 * 1024 * 1024))"
 }
 
 if [[ $mode == "set" ]]; then

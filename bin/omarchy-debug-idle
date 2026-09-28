@@ -21,10 +21,10 @@ section "Idle IPC status"
 omarchy-shell idle status 2>&1 | jq . 2>/dev/null || omarchy-shell idle status 2>&1 || true
 
 section "Quickshell instances"
-quickshell list -p "$OMARCHY_PATH/shell" --any-display 2>&1 || true
+quickshell list -p "${OMARCHY_PATH:-/usr/share/omarchy}/shell" --any-display 2>&1 || true
 
 section "Recent idle logs"
-quickshell --no-color log -p "$OMARCHY_PATH/shell" --any-display --tail "$lines" --log-times -r 'quickshell.wayland.idle_notify=true' 2>&1 \
+quickshell --no-color log -p "${OMARCHY_PATH:-/usr/share/omarchy}/shell" --any-display --tail "$lines" --log-times -r 'quickshell.wayland.idle_notify=true' 2>&1 \
   | grep -Ei 'omarchy idle|idle_notify|screensaver|lock|error|warn|failed' || true
 
 section "Persisted shell log"

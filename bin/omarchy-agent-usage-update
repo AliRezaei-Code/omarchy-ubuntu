@@ -52,7 +52,7 @@ collect() {
 }
 
 pids=()
-for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
+for collector in "${OMARCHY_PATH:-/usr/share/omarchy}"/bin/omarchy-agent-usage-*; do
   [[ -x $collector ]] || continue
   agent="${collector##*/omarchy-agent-usage-}"
   [[ $agent == "update" ]] && continue

@@ -4,7 +4,7 @@
 # omarchy:hidden=true
 
 CONFIG_FILE="$HOME/.config/omarchy/shell.json"
-DEFAULTS_FILE="$OMARCHY_PATH/config/omarchy/shell.json"
+DEFAULTS_FILE="${OMARCHY_PATH:-/usr/share/omarchy}/config/omarchy/shell.json"
 
 fail() {
   echo "${0##*/}: $*" >&2

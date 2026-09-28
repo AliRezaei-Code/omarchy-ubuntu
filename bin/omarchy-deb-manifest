@@ -22,7 +22,7 @@ OMARCHY_PATH=${OMARCHY_PATH%/}
 
 # Directories the deb copies wholesale under the tree root. Listed in the order
 # they should appear in the manifest, so regenerating it is a stable diff.
-TREE_DIRS=(bin config default install manual migrations shell themes)
+TREE_DIRS=(applications bin config default install manual migrations shell themes)
 
 # Individually mapped files, and where they land.
 emit() {

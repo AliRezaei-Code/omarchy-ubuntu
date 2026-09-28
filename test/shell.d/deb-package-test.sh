@@ -54,12 +54,15 @@ for required in nodejs gjs gir1.2-adw-1 fzf jq; do
 done
 pass "the deb depends on the runtimes both front ends need"
 
-# A symlink line ends in " -> target", and the target is what awk's last field
-# would pick up. What this file is about is the paths the package owns, so the
-# link is recorded and the target discarded.
+# dpkg-deb -c prints: perms links owner group size date time path, with a
+# symlink's target after " -> ". Taking the last field -- the obvious way --
+# truncates every path with a space in it, and this tree ships several:
+# "Disk Usage.desktop", "Google Maps.desktop", and so on. dpkg-deb -c prints
+# perms owner/group size date time path -- five fields, then the path, so
+# blanking one to five keeps the whole of it, spaces and all.
 listing=$(dpkg-deb -c "$deb" |
   sed 's| -> .*$||' |
-  awk '{print $NF}' |
+  awk '{$1=$2=$3=$4=$5=""; sub(/^ +/, ""); print}' |
   sed 's|^\./||')
 
 # The packaged contract, already written into default/bash/env-bootstrap.
@@ -113,6 +116,29 @@ if [[ -f $ROOT/packaging/ubuntu/deb/omarchy.manifest ]]; then
   pass "every installed path is on the manifest"
 fi
 
+# The desktop entry is the whole reason the app appears in the user's app grid,
+# and omarchy-refresh-applications copies it from the INSTALLED tree. A package
+# that builds and installs perfectly while missing that directory leaves the
+# user with no dashboard and a "cp: cannot stat" on the first command they are
+# told to run -- which is exactly what six releases did.
+listing_has() { grep -qx "$1" <<<"$listing"; }
+
+listing_has 'usr/share/omarchy/applications/Omarchy.desktop' ||
+  fail "the package ships the desktop entry the refresh command copies"
+listing_has 'usr/share/icons/hicolor/scalable/apps/omarchy-dashboard.svg' ||
+  fail "the package ships the dashboard icon"
+listing_has 'usr/share/omarchy/install/user/mise.sh' ||
+  fail "the package ships install/user, which the refresh command reads"
+
+# And it must agree with the shipped tree, or the two describe different
+# machines again.
+while read -r entry; do
+  name="${entry##*/}"
+  listing_has "usr/share/omarchy/applications/$name" ||
+    fail "every shipped .desktop is in the package" "$name"
+done < <(cd "$ROOT" && ls applications/*.desktop)
+pass "the package ships every .desktop the tree declares"
+
 # gum is a substitute the tree ships, so it has to land somewhere a call site
 # can find it. /usr/local/bin is on PATH ahead of /usr/bin on a stock install
 # and is not owned by dpkg, which is exactly the point.
@@ -127,3 +153,37 @@ grep -q 'fdfind' <<<"$postinst" && grep -q 'batcat' <<<"$postinst" ||
 grep -q 'omarchy-refresh-config' <<<"$postinst" ||
   fail "the postinst says what to run next" "$postinst"
 pass "the postinst links fdfind and batcat and says what to run next"
+
+# --- no command assumes OMARCHY_PATH is exported ---------------------------
+#
+# The deb installs the tree at /usr/share/omarchy, and /etc/profile.d sets
+# OMARCHY_PATH for LOGIN shells. A GNOME session is not a login shell, so on a
+# desktop -- the one place the dashboard is meant to appear -- the variable is
+# simply absent. Six releases shipped with omarchy-refresh-applications, the
+# command the postinst names and the one that installs the app-grid entry,
+# failing with "cp: cannot stat '/applications/*.desktop'".
+#
+# Every command that reads the variable therefore has to fall back to the
+# packaged root, which is what the 55 of them now do.
+unguarded=""
+for script in "$ROOT"/bin/*; do
+  [[ -f $script && -x $script ]] || continue
+  head -1 "$script" | grep -q 'bash' || continue
+  grep -q 'OMARCHY_PATH' "$script" || continue
+  grep -qE 'OMARCHY_PATH:-|OMARCHY_PATH="' "$script" && continue
+  # A mention inside a comment is not a read.
+  grep -vE '^[[:space:]]*#' "$script" | grep -q '\$OMARCHY_PATH' &&
+    unguarded="$unguarded ${script##*/}"
+done
+
+[[ -z $unguarded ]] ||
+  fail "every bin/ command defaults OMARCHY_PATH to the packaged root" "$unguarded"
+pass "every bin/ command defaults OMARCHY_PATH to the packaged root"
+
+# And the two the postinst names carry the fallback explicitly, since those
+# are the commands a user is told to run first.
+for command in omarchy-refresh-applications omarchy-refresh-config; do
+  grep -q 'OMARCHY_PATH:-/usr/share/omarchy' "$ROOT/bin/$command" ||
+    fail "$command falls back to the packaged root"
+done
+pass "the first-run commands fall back to the packaged root"

@@ -19,7 +19,7 @@ prompt_reboot=1
 # package does not ship yet fails outright, and one it does ship silently runs
 # the packaged copy while every unprivileged call runs the checkout. Prepending
 # the checkout's bin keeps root on the code being edited — the same trust the
-# link already extends to every system script Omarchy runs out of $OMARCHY_PATH.
+# link already extends to every system script Omarchy runs out of ${OMARCHY_PATH:-/usr/share/omarchy}.
 sudoers_file="/etc/sudoers.d/omarchy-dev-path"
 system_secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
 

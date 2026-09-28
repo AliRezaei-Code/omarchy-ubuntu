@@ -23,7 +23,7 @@ ARCH := all
 DEB := $(OUT)/omarchy_$(VERSION)_$(ARCH).deb
 
 # The directories that make up the installed tree.
-TREE_DIRS := bin config default install manual migrations shell themes
+TREE_DIRS := applications bin config default install manual migrations shell themes
 
 .PHONY: all test deb clean omarchy-deb-packages omarchy-deb-manifest
 
