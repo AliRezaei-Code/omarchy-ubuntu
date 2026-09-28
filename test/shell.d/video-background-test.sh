@@ -287,6 +287,21 @@ pass "a timed out video is left to retry"
 pass "a locked video wallpaper follows the panels' real DPMS state"
 pass "OWE and its lock feed module are declared"
 
+# The extracted functions read globals that the real script declares at top
+# level, far below them. Sourcing the functions alone therefore leaves them
+# unset, and the first reference aborts under set -u -- which is a failure of
+# the harness, not of the transition logic it is here to check. Seed every one
+# the extraction does not set, so the test exercises what it means to.
+CHOSEN_THEME_BACKGROUND=""
+STAGED_THEME_BACKGROUND=""
+OLD_BACKGROUND_SNAPSHOT=""
+PREPARED_BACKGROUND=""
+PREPARED_BACKGROUND_SNAPSHOT=""
+BACKGROUND_TRANSITION_SNAPSHOTS=true
+CURRENT_THEME_PATH=""
+NEXT_THEME_PATH=""
+CURRENT_BACKGROUND_LINK=""
+
 source <(awk '
   /^(is_video_path|snapshot_background_path|background_transition_uses_snapshots|choose_theme_background|choose_staged_theme_background|set_theme_background)\(\) \{/ { copying=1 }
   copying { print }

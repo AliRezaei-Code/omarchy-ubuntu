@@ -23,15 +23,9 @@
 #                   tool -- is what fails.
 #   keybindings-menu  `xkbcli`, which no jammy archive package provides.
 #   mise-work-path   `mise`, not in the 22.04 archive.
-#   video-background  upstream's test, arrived with the merge. It dies under
-#                     set -u on PREPARED_BACKGROUND_SNAPSHOT, an unbound
-#                     variable in a script it feeds to bash, and it asserts
-#                     against the Quickshell/Hyprland background widget this
-#                     port declares unsupported. Not fully diagnosed.
 bar-text-color
 keybindings-menu
 mise-work-path
-video-background
 
 # --- the machine the runner is --------------------------------------------
 # The tree is not root-owned, so omarchy-plymouth-set refuses to publish. It
@@ -72,6 +66,15 @@ system-sleep-ownership-migration
 #   kernel-headers
 #   legacy-power-udev       ran the migration without OMARCHY_PATH, so it died
 #                           on an unbound variable instead of the udev logic
+#   video-background       upstream's, arrived with the merge. It extracts the
+#                           theme functions from omarchy-theme-set and sources
+#                           them alone, so the globals those functions read --
+#                           PREPARED_BACKGROUND_SNAPSHOT and ten others, which
+#                           the real script declares at top level -- were unset
+#                           and the first reference aborted under set -u. A
+#                           harness gap, not the transition logic it exists to
+#                           check; the test now seeds them. Verified by
+#                           removing a snapshot call, which turns it red.
 #   elsewhen-migration      upstream's, arrived with the merge: writes jq that
 #                           1.6 will not compile, an if/elif chain with no
 #                           final else, so it failed on every deb install
